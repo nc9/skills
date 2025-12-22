@@ -38,6 +38,7 @@ app = typer.Typer(help="Deep research using Parallel AI Task API")
 
 # --- Types ---
 
+
 class Processor(str, Enum):
     pro_fast = "pro-fast"
     pro = "pro"
@@ -51,6 +52,7 @@ class OutputFormat(str, Enum):
 
 
 # --- Client ---
+
 
 def getClient() -> Parallel:
     """Create Parallel client from environment."""
@@ -120,6 +122,7 @@ def research(
 
 # --- Formatters ---
 
+
 def formatJson(response: dict) -> str:
     """Format as JSON for LLM consumption."""
     return json.dumps(response, indent=2, default=str)
@@ -179,12 +182,19 @@ def formatMarkdown(response: dict) -> str:
 
 # --- Commands ---
 
+
 @app.command("research")
 def researchCmd(
     query: Annotated[str, typer.Argument(help="Research query (max 15000 chars)")],
-    processor: Annotated[Processor, typer.Option("--processor", "-p", help="Model to use")] = Processor.pro_fast,
-    timeout: Annotated[int, typer.Option("--timeout", "-t", help="Max wait seconds")] = DEFAULT_TIMEOUT,
-    format: Annotated[OutputFormat, typer.Option("--format", "-f", help="Output format")] = OutputFormat.json,
+    processor: Annotated[
+        Processor, typer.Option("--processor", "-p", help="Model to use")
+    ] = Processor.pro_fast,
+    timeout: Annotated[
+        int, typer.Option("--timeout", "-t", help="Max wait seconds")
+    ] = DEFAULT_TIMEOUT,
+    format: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
 ) -> None:
     """Perform deep research on a topic."""
     # Validate query length

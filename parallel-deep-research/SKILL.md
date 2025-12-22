@@ -95,6 +95,7 @@ Extended timeout for complex research:
 ## Notes
 
 - Research can take 1-45 minutes depending on complexity
+- The pro model and ultra models are expensive and can take 10-45 minutes to complete
 - Query must be under 15,000 characters
 - Status updates print to stderr, results to stdout
 - `basis` field contains citations mapping content to sources
