@@ -43,6 +43,8 @@ MIME_TYPES = {
     ".webp": "image/webp",
 }
 
+ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]
+
 
 # --- Helpers ---
 
@@ -94,6 +96,7 @@ def generateImage(
     output_path: Path,
     api_key: str,
     input_image: Path | None = None,
+    aspect_ratio: str | None = None,
 ) -> dict:
     """Generate or edit an image using OpenRouter API."""
     is_editing = input_image is not None
@@ -111,17 +114,22 @@ def generateImage(
         typer.echo(f"Model: {model}", err=True)
         message_content = prompt
 
+    request_body = {
+        "model": model,
+        "messages": [{"role": "user", "content": message_content}],
+        "modalities": ["image", "text"],
+    }
+
+    if aspect_ratio:
+        request_body["image_config"] = {"aspect_ratio": aspect_ratio}
+
     response = requests.post(
         url="https://openrouter.ai/api/v1/chat/completions",
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         },
-        json={
-            "model": model,
-            "messages": [{"role": "user", "content": message_content}],
-            "modalities": ["image", "text"],
-        },
+        json=request_body,
     )
 
     if response.status_code != 200:
@@ -190,13 +198,21 @@ def generate(
     input: Annotated[
         Path | None, typer.Option("--input", "-i", help="Input image for editing")
     ] = None,
+    aspect_ratio: Annotated[
+        str | None,
+        typer.Option(
+            "--aspect-ratio",
+            "-a",
+            help="Aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3)",
+        ),
+    ] = None,
     api_key: Annotated[
         str | None, typer.Option("--api-key", help="OpenRouter API key")
     ] = None,
 ) -> None:
     """Generate or edit an image."""
     key = getApiKey(api_key)
-    generateImage(prompt, model, output, key, input)
+    generateImage(prompt, model, output, key, input, aspect_ratio)
 
 
 @app.callback(invoke_without_command=True)
@@ -212,6 +228,14 @@ def main(
     input: Annotated[
         Path | None, typer.Option("--input", "-i", help="Input image for editing")
     ] = None,
+    aspect_ratio: Annotated[
+        str | None,
+        typer.Option(
+            "--aspect-ratio",
+            "-a",
+            help="Aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3)",
+        ),
+    ] = None,
     api_key: Annotated[
         str | None, typer.Option("--api-key", help="OpenRouter API key")
     ] = None,
@@ -219,7 +243,7 @@ def main(
     """Generate or edit images using OpenRouter API."""
     if ctx.invoked_subcommand is None and prompt:
         key = getApiKey(api_key)
-        generateImage(prompt, model, output, key, input)
+        generateImage(prompt, model, output, key, input, aspect_ratio)
     elif ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
 

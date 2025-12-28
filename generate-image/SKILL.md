@@ -85,6 +85,12 @@ scripts/generate_image.py "A cat in space" --model "black-forest-labs/flux.2-pro
 scripts/generate_image.py "Abstract art" --output artwork.png
 ```
 
+### Specify aspect ratio (Gemini models)
+```bash
+scripts/generate_image.py "A panoramic mountain landscape" --aspect-ratio 16:9
+scripts/generate_image.py "Social media story image" -a 9:16
+```
+
 ### Edit an existing image
 ```bash
 scripts/generate_image.py "Make the background blue" --input photo.jpg
@@ -113,6 +119,7 @@ scripts/generate_image.py "Image 2 description" --output image2.png
 - `--input` or `-i`: Input image path for editing (enables edit mode)
 - `--model` or `-m`: OpenRouter model ID (default: google/gemini-3-pro-image-preview)
 - `--output` or `-o`: Output file path (default: generated_image.png)
+- `--aspect-ratio` or `-a`: Aspect ratio for generated image (Gemini models only). Supported: 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3
 - `--api-key`: OpenRouter API key (overrides .env file)
 
 ## Example Use Cases
