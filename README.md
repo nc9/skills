@@ -34,6 +34,7 @@ npx claude-plugins install @nc9/skills/parallel-web-search
 npx claude-plugins install @nc9/skills/parallel-deep-research
 npx claude-plugins install @nc9/skills/optimize-image-web
 npx claude-plugins install @nc9/skills/generate-image
+npx claude-plugins install @nc9/skills/remove-background
 
 # Install for user (all projects)
 npx claude-plugins install @nc9/skills/keyword-research --user
@@ -64,6 +65,7 @@ Or browse via UI: `/plugin` → `Browse and install plugins` → `nc9-skills`
 | [parallel-deep-research](./parallel-deep-research/) | Comprehensive research reports with multi-source synthesis | [Parallel AI](https://parallel.ai/) |
 | [optimize-image-web](./optimize-image-web/) | WebP conversion, favicons, social cards, thumbnails | None (local) |
 | [generate-image](./generate-image/) | AI image generation/editing via FLUX, Gemini | [OpenRouter](https://openrouter.ai/) |
+| [remove-background](./remove-background/) | AI background removal using BiRefNet | None (local) |
 
 ## Configuration
 
@@ -92,6 +94,7 @@ After installing, just describe what you need:
 - "Research the competitive landscape of cloud providers"
 - "Optimize this image for web and generate favicons"
 - "Generate an illustration of a sunset over mountains"
+- "Remove the background from this photo"
 
 Claude automatically invokes the appropriate skill.
 
