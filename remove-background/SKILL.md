@@ -30,6 +30,8 @@ No API keys required. Model downloads automatically on first run (~100MB, cached
 |--------|-------------|
 | `input` | Input image path (required) |
 | `-o, --output` | Output path (default: `{name}_nobg.png`) |
+| `-c, --crop` | Smart crop to foreground bounding box |
+| `-p, --padding` | Padding around crop in pixels (default: 0) |
 | `--device` | Force device: cuda/mps/cpu (default: auto-detect) |
 | `-f, --format` | Output: json (default) or table |
 
@@ -38,6 +40,12 @@ No API keys required. Model downloads automatically on first run (~100MB, cached
 ```bash
 # Basic usage - outputs photo_nobg.png
 ./scripts/remove_background.py photo.jpg
+
+# Smart crop to subject
+./scripts/remove_background.py photo.jpg --crop
+
+# Smart crop with 20px padding
+./scripts/remove_background.py photo.jpg --crop --padding 20
 
 # Custom output path
 ./scripts/remove_background.py photo.jpg -o transparent.png
@@ -58,6 +66,9 @@ JSON (default):
   "output": "photo_nobg.png",
   "device": "mps",
   "original_size": [1920, 1080],
+  "output_size": [800, 600],
+  "cropped": true,
+  "crop_box": [120, 80, 920, 680],
   "model": "ZhengPeng7/BiRefNet_lite"
 }
 ```

@@ -85,8 +85,14 @@ def removeBackground(
     img: Image.Image,
     model: AutoModelForImageSegmentation,
     device: str,
-) -> Image.Image:
-    """Remove background from image, return RGBA with transparency."""
+    crop: bool = False,
+    padding: int = 0,
+) -> tuple[Image.Image, tuple[int, int, int, int] | None]:
+    """Remove background from image, return RGBA with transparency.
+
+    Returns:
+        Tuple of (result image, crop_box or None if not cropped)
+    """
     original_size = img.size
     img_rgb = img.convert("RGB")
 
@@ -106,7 +112,21 @@ def removeBackground(
     result = img_rgb.copy()
     result.putalpha(mask)
 
-    return result
+    crop_box = None
+    if crop:
+        # Get bounding box of non-transparent pixels
+        bbox = result.getbbox()
+        if bbox:
+            # Apply padding
+            x1, y1, x2, y2 = bbox
+            x1 = max(0, x1 - padding)
+            y1 = max(0, y1 - padding)
+            x2 = min(original_size[0], x2 + padding)
+            y2 = min(original_size[1], y2 + padding)
+            crop_box = (x1, y1, x2, y2)
+            result = result.crop(crop_box)
+
+    return result, crop_box
 
 
 @app.command()
@@ -120,6 +140,14 @@ def main(
         str | None,
         typer.Option("--device", "-d", help="Device: cuda/mps/cpu (default: auto)"),
     ] = None,
+    crop: Annotated[
+        bool,
+        typer.Option("--crop", "-c", help="Smart crop to foreground bounding box"),
+    ] = False,
+    padding: Annotated[
+        int,
+        typer.Option("--padding", "-p", help="Padding around crop in pixels"),
+    ] = 0,
     format: Annotated[
         OutputFormat,
         typer.Option("--format", "-f", help="Output format"),
@@ -154,7 +182,7 @@ def main(
     if format == OutputFormat.table:
         typer.echo("Removing background...")
 
-    result = removeBackground(img, model, selected_device)
+    result, crop_box = removeBackground(img, model, selected_device, crop, padding)
 
     # Save result
     result.save(output, "PNG")
@@ -164,14 +192,21 @@ def main(
         "output": str(output),
         "device": selected_device,
         "original_size": list(original_size),
+        "output_size": list(result.size),
+        "cropped": crop,
         "model": MODEL_NAME,
     }
+    if crop_box:
+        response["crop_box"] = list(crop_box)
 
     if format == OutputFormat.json:
         typer.echo(json.dumps(response, indent=2))
     else:
         typer.echo(f"Saved: {output}")
-        typer.echo(f"Size: {original_size[0]}x{original_size[1]}")
+        typer.echo(f"Original: {original_size[0]}x{original_size[1]}")
+        typer.echo(f"Output: {result.size[0]}x{result.size[1]}")
+        if crop_box:
+            typer.echo(f"Crop box: {crop_box}")
         typer.echo(f"Device: {selected_device}")
 
 
