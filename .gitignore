@@ -4,3 +4,5 @@
 CLAUDE.md
 .DS_Store
 __pycache__
+.claude/
+seo-audit/
