@@ -1,6 +1,6 @@
 # Generate Image
 
-AI image generation and editing using OpenRouter models (FLUX, Gemini).
+AI image generation and editing using Google Gemini via OpenRouter.
 
 ## Installation
 
@@ -41,28 +41,21 @@ export OPENROUTER_API_KEY=your_api_key_here
 # Edit existing image
 ./scripts/generate_image.py "Make the sky purple" --input photo.jpg
 
-# Specify model
-./scripts/generate_image.py "A cat in space" --model "black-forest-labs/flux.2-pro"
-
 # Custom output path
 ./scripts/generate_image.py "Abstract art" --output artwork.png
 ```
 
-## Models
+## Model
 
-| Model | Quality | Editing Support |
-|-------|---------|-----------------|
-| `google/gemini-3-pro-image-preview` (default) | High | Yes |
-| `black-forest-labs/flux.2-pro` | High | Yes |
-| `black-forest-labs/flux.2-flex` | Good | No (generation only) |
+**Model**: `google/gemini-3-pro-image-preview` - High quality, supports generation + editing
 
 ## Options
 
 | Option | Description |
 |--------|-------------|
 | `--input, -i` | Input image for editing |
-| `--model, -m` | OpenRouter model ID |
 | `--output, -o` | Output file path (default: generated_image.png) |
+| `--aspect-ratio, -a` | Aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3) |
 | `--api-key` | API key (overrides .env) |
 
 ## When to Use

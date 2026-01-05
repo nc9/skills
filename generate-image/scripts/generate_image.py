@@ -10,8 +10,7 @@
 """
 Generate Image Skill
 
-Generate and edit images using OpenRouter API with models like
-Gemini 3 Pro, FLUX.2 Pro, etc.
+Generate and edit images using OpenRouter API with Google Gemini 3 Pro.
 """
 
 from __future__ import annotations

@@ -1,11 +1,11 @@
 ---
 name: generate-image
-description: Generate or edit images using AI models (FLUX, Gemini). Use for general-purpose image generation including photos, illustrations, artwork, visual assets, concept art, and any image that isn't a technical diagram or schematic. For flowcharts, circuits, pathways, and technical diagrams, use the scientific-schematics skill instead.
+description: Generate or edit images using Google Gemini. Use for general-purpose image generation including photos, illustrations, artwork, visual assets, concept art, and any image that isn't a technical diagram or schematic. For flowcharts, circuits, pathways, and technical diagrams, use the scientific-schematics skill instead.
 ---
 
 # Generate Image
 
-Generate and edit high-quality images using OpenRouter's image generation models including FLUX.2 Pro and Gemini 3 Pro.
+Generate and edit high-quality images using Google Gemini 3 Pro via OpenRouter.
 
 ## When to Use This Skill
 
@@ -52,32 +52,15 @@ This generates/edits an image and saves it as `generated_image.png` in the curre
 
 The script will automatically detect the `.env` file and provide clear error messages if the API key is missing.
 
-## Model Selection
+## Model
 
-**Default model**: `google/gemini-3-pro-image-preview` (high quality, recommended)
-
-**Available models for generation and editing**:
-- `google/gemini-3-pro-image-preview` - High quality, supports generation + editing
-- `black-forest-labs/flux.2-pro` - Fast, high quality, supports generation + editing
-
-**Generation only**:
-- `black-forest-labs/flux.2-flex` - Fast and cheap, but not as high quality as pro
-
-Select based on:
-- **Quality**: Use gemini-3-pro or flux.2-pro
-- **Editing**: Use gemini-3-pro or flux.2-pro (both support image editing)
-- **Cost**: Use flux.2-flex for generation only
+**Model**: `google/gemini-3-pro-image-preview` - High quality, supports generation + editing
 
 ## Common Usage Patterns
 
 ### Basic generation
 ```bash
 scripts/generate_image.py "Your prompt here"
-```
-
-### Specify model
-```bash
-scripts/generate_image.py "A cat in space" --model "black-forest-labs/flux.2-pro"
 ```
 
 ### Custom output path
@@ -96,11 +79,6 @@ scripts/generate_image.py "Social media story image" -a 9:16
 scripts/generate_image.py "Make the background blue" --input photo.jpg
 ```
 
-### Edit with a specific model
-```bash
-scripts/generate_image.py "Add sunglasses to the person" --input portrait.png --model "black-forest-labs/flux.2-pro"
-```
-
 ### Edit with custom output
 ```bash
 scripts/generate_image.py "Remove the text from the image" --input screenshot.png --output cleaned.png
@@ -117,9 +95,8 @@ scripts/generate_image.py "Image 2 description" --output image2.png
 
 - `prompt` (required): Text description of the image to generate, or editing instructions
 - `--input` or `-i`: Input image path for editing (enables edit mode)
-- `--model` or `-m`: OpenRouter model ID (default: google/gemini-3-pro-image-preview)
 - `--output` or `-o`: Output file path (default: generated_image.png)
-- `--aspect-ratio` or `-a`: Aspect ratio for generated image (Gemini models only). Supported: 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3
+- `--aspect-ratio` or `-a`: Aspect ratio for generated image. Supported: 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3
 - `--api-key`: OpenRouter API key (overrides .env file)
 
 ## Example Use Cases
@@ -175,7 +152,7 @@ If the script fails, read the error message and address the issue before retryin
 - Be specific about what changes you want (e.g., "change the sky to sunset colors" vs "edit the sky")
 - Reference specific elements in the image when possible
 - For best results, use clear and detailed editing instructions
-- Both Gemini 3 Pro and FLUX.2 Pro support image editing through OpenRouter
+- Gemini 3 Pro supports both generation and editing through OpenRouter
 
 ## Integration with Other Skills
 
