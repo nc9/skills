@@ -91,7 +91,6 @@ def getApiKey(api_key: str | None = None) -> str:
 
 def generateImage(
     prompt: str,
-    model: str,
     output_path: Path,
     api_key: str,
     input_image: Path | None = None,
@@ -102,7 +101,7 @@ def generateImage(
 
     if is_editing:
         typer.echo(f"Editing: {input_image}", err=True)
-        typer.echo(f"Model: {model}", err=True)
+        typer.echo(f"Model: {DEFAULT_MODEL}", err=True)
         image_data_url = loadImageAsBase64(input_image)
         message_content = [
             {"type": "text", "text": prompt},
@@ -110,11 +109,11 @@ def generateImage(
         ]
     else:
         typer.echo(f"Generating: {prompt[:50]}...", err=True)
-        typer.echo(f"Model: {model}", err=True)
+        typer.echo(f"Model: {DEFAULT_MODEL}", err=True)
         message_content = prompt
 
     request_body = {
-        "model": model,
+        "model": DEFAULT_MODEL,
         "messages": [{"role": "user", "content": message_content}],
         "modalities": ["image", "text"],
     }
@@ -188,9 +187,6 @@ def generate(
     prompt: Annotated[
         str, typer.Argument(help="Image description or editing instructions")
     ],
-    model: Annotated[
-        str, typer.Option("--model", "-m", help="OpenRouter model ID")
-    ] = DEFAULT_MODEL,
     output: Annotated[
         Path, typer.Option("--output", "-o", help="Output file path")
     ] = Path(DEFAULT_OUTPUT),
@@ -211,16 +207,13 @@ def generate(
 ) -> None:
     """Generate or edit an image."""
     key = getApiKey(api_key)
-    generateImage(prompt, model, output, key, input, aspect_ratio)
+    generateImage(prompt, output, key, input, aspect_ratio)
 
 
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
     prompt: Annotated[str | None, typer.Argument(help="Image description")] = None,
-    model: Annotated[
-        str, typer.Option("--model", "-m", help="OpenRouter model ID")
-    ] = DEFAULT_MODEL,
     output: Annotated[
         Path, typer.Option("--output", "-o", help="Output file path")
     ] = Path(DEFAULT_OUTPUT),
@@ -242,7 +235,7 @@ def main(
     """Generate or edit images using OpenRouter API."""
     if ctx.invoked_subcommand is None and prompt:
         key = getApiKey(api_key)
-        generateImage(prompt, model, output, key, input, aspect_ratio)
+        generateImage(prompt, output, key, input, aspect_ratio)
     elif ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
 
