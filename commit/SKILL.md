@@ -133,13 +133,36 @@ uv run ty check .
 uv run basedpyright .
 ```
 
-### 7. Atomic Commits
+### 7. Extract Issue References
+
+Scan the conversation for issue references from:
+
+- **Linear**: `PROJ-123`, `BACKEND-4ZW` (uppercase prefix + alphanumeric ID)
+- **GitHub**: `#123`, `org/repo#123`, or GitHub issue URLs
+- **Sentry**: Sentry issue URLs like `https://sentry.io/issues/...` or issue IDs like `PROJ-123`
+
+If found, include in commit message body (not title). Format:
+
+```
+type(scope): message
+
+Refs: BACKEND-4ZW
+```
+
+For fixes that close an issue:
+```
+fix(scope): message
+
+Closes: BACKEND-4ZW
+```
+
+### 8. Atomic Commits
 
 Group related changes. Each feature/fix gets its own commit.
 
 1. Review changes: `git diff`
 2. Stage related files: `git add <files>`
-3. Commit with convention format
+3. Commit with convention format (include issue refs if found)
 4. Repeat for remaining changes
 
 ## Commit Convention
@@ -169,9 +192,29 @@ Scope is **required** - use affected area (api, auth, db, ui, cli).
 git add src/auth/*.ts
 git commit -m "feat(auth): add JWT refresh token support"
 
-# Bug fix with issue reference
+# Bug fix with GitHub issue reference
 git add src/api/users.ts tests/api/users.test.ts
 git commit -m "fix(api): handle null user in profile endpoint #142"
+
+# Fix with Linear issue reference (multiline via heredoc)
+git add opennem/tasks/app.py
+git commit -m "$(cat <<'EOF'
+fix(worker): pass WorkerSettings as positional arg
+
+Sentry ArqIntegration expects settings_cls as args[0], not kwarg.
+
+Closes: BACKEND-4ZW
+EOF
+)"
+
+# Feature with Sentry issue reference
+git add src/error-handler.ts
+git commit -m "$(cat <<'EOF'
+fix(errors): handle null response in API client
+
+Refs: SENTRY-ABC123
+EOF
+)"
 
 # Multiple atomic commits from one session
 git add src/components/Button.tsx
@@ -187,3 +230,5 @@ git commit -m "refactor(utils): extract date formatting helpers"
 - Prefer small, focused commits over large batches
 - Keep commit messages concise (<72 chars first line)
 - Don't commit generated files, build artifacts, or secrets
+- Always check conversation for issue refs (Linear, GitHub, Sentry) and include them
+- Use `Closes:` for fixes, `Refs:` for related work
