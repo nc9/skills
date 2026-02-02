@@ -32,11 +32,13 @@ If user mentions @file.ts or specific files, include content.
 
 ### 4. Run Review
 ```bash
+# Default: reviews uncommitted changes if any exist
 ./scripts/review.py codex \
-  --base main \
   --issues "#123,PROJ-456" \
   --plan ./plan.md \
   --files "src/api.ts"
+
+# If no uncommitted changes, prompts for branch/commit to compare
 ```
 
 ## Command
@@ -49,8 +51,8 @@ If user mentions @file.ts or specific files, include content.
 
 | Option | Description |
 |--------|-------------|
-| `--base, -b BRANCH` | Compare against branch (default: main) |
-| `--uncommitted, -u` | Review staged/unstaged/untracked changes |
+| `--base, -b BRANCH` | Compare against branch |
+| `--uncommitted, -u` | Review staged/unstaged/untracked changes (default if changes exist) |
 | `--commit, -c SHA` | Review specific commit |
 | `--issues, -i REFS` | Issue refs: #123, PROJ-456, sentry:ID, or URLs |
 | `--plan, -p PATH` | Plan file for context |
@@ -88,11 +90,14 @@ Codex outputs its review directly to the terminal.
 ## Examples
 
 ```bash
-# Review changes against main
-./scripts/review.py codex --base main
+# Default: review uncommitted changes (or prompt if none)
+./scripts/review.py codex
 
-# Review uncommitted changes
+# Explicitly review uncommitted changes
 ./scripts/review.py codex --uncommitted
+
+# Review changes against specific branch
+./scripts/review.py codex --base main
 
 # Review with GitHub issue context
 ./scripts/review.py codex --issues "#123"

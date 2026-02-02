@@ -278,9 +278,45 @@ def printContext(
     typer.echo("=" * 60 + "\n", err=True)
 
 
+def hasUncommittedChanges() -> bool:
+    """Check if there are any uncommitted changes (staged, unstaged, or untracked)."""
+    # Check for staged or unstaged changes
+    result = subprocess.run(
+        ["git", "status", "--porcelain"], capture_output=True, text=True
+    )
+    return bool(result.stdout.strip())
+
+
+def promptForCompareTarget() -> tuple[str | None, str | None]:
+    """Prompt user for commit or branch to compare against.
+
+    Returns (base_branch, commit_sha) - one will be set, other None.
+    """
+    typer.echo("\nNo uncommitted changes found.", err=True)
+    typer.echo("What would you like to review?\n", err=True)
+    typer.echo("  1. Compare current branch against main", err=True)
+    typer.echo("  2. Compare current branch against another branch", err=True)
+    typer.echo("  3. Review a specific commit", err=True)
+    typer.echo("  4. Cancel\n", err=True)
+
+    choice = typer.prompt("Select option", default="1")
+
+    match choice:
+        case "1":
+            return ("main", None)
+        case "2":
+            branch = typer.prompt("Enter branch name to compare against")
+            return (branch, None)
+        case "3":
+            commit_sha = typer.prompt("Enter commit SHA")
+            return (None, commit_sha)
+        case _:
+            raise typer.Exit(0)
+
+
 @app.command()
 def codex(
-    base: str = typer.Option("main", "--base", "-b", help="Compare against branch"),
+    base: str = typer.Option(None, "--base", "-b", help="Compare against branch"),
     uncommitted: bool = typer.Option(
         False, "--uncommitted", "-u", help="Review staged/unstaged/untracked changes"
     ),
@@ -304,12 +340,24 @@ def codex(
 
     Gathers context from GitHub/Linear/Sentry issues, plan files, and referenced
     files, then runs codex review interactively.
+
+    By default, reviews uncommitted changes. If no uncommitted changes exist,
+    prompts for a branch or commit to compare against.
     """
     # Check if codex is installed
     if subprocess.run(["which", "codex"], capture_output=True).returncode != 0:
         typer.echo("Error: codex CLI not found", err=True)
         typer.echo("Install from: https://github.com/openai/codex", err=True)
         raise typer.Exit(1)
+
+    # Determine diff source if not explicitly specified
+    explicit_source = uncommitted or commit or base
+    if not explicit_source:
+        if hasUncommittedChanges():
+            uncommitted = True
+            typer.echo("Reviewing uncommitted changes...", err=True)
+        else:
+            base, commit = promptForCompareTarget()
 
     # Parse and fetch issue references
     issue_contexts: list[IssueContext] = []
@@ -357,6 +405,9 @@ def codex(
         cmd.extend(["--commit", commit])
     elif base:
         cmd.extend(["--base", base])
+    else:
+        # Should not reach here, but default to main if somehow no source
+        cmd.extend(["--base", "main"])
 
     # Model override
     cmd.extend(["-c", f'model="{model}"'])
