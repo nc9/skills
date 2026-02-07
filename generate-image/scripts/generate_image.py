@@ -95,6 +95,7 @@ def generateImage(
     api_key: str,
     input_image: Path | None = None,
     aspect_ratio: str | None = None,
+    max_tokens: int = 1024,
 ) -> dict:
     """Generate or edit an image using OpenRouter API."""
     is_editing = input_image is not None
@@ -116,6 +117,7 @@ def generateImage(
         "model": DEFAULT_MODEL,
         "messages": [{"role": "user", "content": message_content}],
         "modalities": ["image", "text"],
+        "max_tokens": max_tokens,
     }
 
     if aspect_ratio:
@@ -201,13 +203,21 @@ def generate(
             help="Aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3)",
         ),
     ] = None,
+    max_tokens: Annotated[
+        int,
+        typer.Option(
+            "--max-tokens",
+            "-t",
+            help="Max output tokens (higher = more detail, default 1024)",
+        ),
+    ] = 1024,
     api_key: Annotated[
         str | None, typer.Option("--api-key", help="OpenRouter API key")
     ] = None,
 ) -> None:
     """Generate or edit an image."""
     key = getApiKey(api_key)
-    generateImage(prompt, output, key, input, aspect_ratio)
+    generateImage(prompt, output, key, input, aspect_ratio, max_tokens)
 
 
 @app.callback(invoke_without_command=True)
@@ -228,6 +238,14 @@ def main(
             help="Aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3)",
         ),
     ] = None,
+    max_tokens: Annotated[
+        int,
+        typer.Option(
+            "--max-tokens",
+            "-t",
+            help="Max output tokens (higher = more detail, default 1024)",
+        ),
+    ] = 1024,
     api_key: Annotated[
         str | None, typer.Option("--api-key", help="OpenRouter API key")
     ] = None,
@@ -235,7 +253,7 @@ def main(
     """Generate or edit images using OpenRouter API."""
     if ctx.invoked_subcommand is None and prompt:
         key = getApiKey(api_key)
-        generateImage(prompt, output, key, input, aspect_ratio)
+        generateImage(prompt, output, key, input, aspect_ratio, max_tokens)
     elif ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
 

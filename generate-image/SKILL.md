@@ -84,6 +84,11 @@ scripts/generate_image.py "Make the background blue" --input photo.jpg
 scripts/generate_image.py "Remove the text from the image" --input screenshot.png --output cleaned.png
 ```
 
+### Higher detail output
+```bash
+scripts/generate_image.py "Detailed architectural blueprint of a modern house" --max-tokens 2048
+```
+
 ### Multiple images
 Run the script multiple times with different prompts or output paths:
 ```bash
@@ -97,6 +102,7 @@ scripts/generate_image.py "Image 2 description" --output image2.png
 - `--input` or `-i`: Input image path for editing (enables edit mode)
 - `--output` or `-o`: Output file path (default: generated_image.png)
 - `--aspect-ratio` or `-a`: Aspect ratio for generated image. Supported: 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3
+- `--max-tokens` or `-t`: Max output tokens (default: 1024). Increase for more detailed/complex images
 - `--api-key`: OpenRouter API key (overrides .env file)
 
 ## Example Use Cases
