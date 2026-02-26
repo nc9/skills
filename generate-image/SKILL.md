@@ -5,7 +5,7 @@ description: Generate or edit images using Google Gemini. Use for general-purpos
 
 # Generate Image
 
-Generate and edit high-quality images using Google Gemini 3 Pro via OpenRouter.
+Generate and edit high-quality images using Gemini 3.1 Flash (Nano Banana 2) via OpenRouter. Pro-level visual quality at Flash speed with cheaper pricing.
 
 ## When to Use This Skill
 
@@ -54,7 +54,7 @@ The script will automatically detect the `.env` file and provide clear error mes
 
 ## Model
 
-**Model**: `google/gemini-3-pro-image-preview` - High quality, supports generation + editing
+**Model**: `google/gemini-3.1-flash-image-preview` (Nano Banana 2) - Pro-level quality at Flash speed, supports generation + editing + reasoning
 
 ## Common Usage Patterns
 
@@ -68,10 +68,17 @@ scripts/generate_image.py "Your prompt here"
 scripts/generate_image.py "Abstract art" --output artwork.png
 ```
 
-### Specify aspect ratio (Gemini models)
+### Specify aspect ratio
 ```bash
 scripts/generate_image.py "A panoramic mountain landscape" --aspect-ratio 16:9
 scripts/generate_image.py "Social media story image" -a 9:16
+scripts/generate_image.py "Wide banner image" -a 8:1
+```
+
+### High resolution output
+```bash
+scripts/generate_image.py "Product photo of a watch" --size 4K
+scripts/generate_image.py "Quick thumbnail" --size 0.5K
 ```
 
 ### Edit an existing image
@@ -89,6 +96,21 @@ scripts/generate_image.py "Remove the text from the image" --input screenshot.pn
 scripts/generate_image.py "Detailed architectural blueprint of a modern house" --max-tokens 2048
 ```
 
+### Reproducible generation (seed)
+```bash
+scripts/generate_image.py "A red fox in autumn forest" --seed 42 -o fox.png
+```
+
+### High creativity
+```bash
+scripts/generate_image.py "Abstract dreamscape" --temperature 1.8 -o dream.png
+```
+
+### Reasoning for complex prompts
+```bash
+scripts/generate_image.py "A technically accurate cross-section of a jet engine" --reasoning high
+```
+
 ### Multiple images
 Run the script multiple times with different prompts or output paths:
 ```bash
@@ -101,8 +123,12 @@ scripts/generate_image.py "Image 2 description" --output image2.png
 - `prompt` (required): Text description of the image to generate, or editing instructions
 - `--input` or `-i`: Input image path for editing (enables edit mode)
 - `--output` or `-o`: Output file path (default: generated_image.png)
-- `--aspect-ratio` or `-a`: Aspect ratio for generated image. Supported: 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3
+- `--aspect-ratio` or `-a`: Aspect ratio. Standard: 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3, 4:5, 5:4, 21:9. Extended (Flash only): 1:4, 4:1, 1:8, 8:1
+- `--size`: Image resolution — `0.5K`, `1K` (default), `2K`, `4K`. `0.5K` is Flash-exclusive
 - `--max-tokens` or `-t`: Max output tokens (default: 1024). Increase for more detailed/complex images
+- `--seed` or `-s`: Seed for reproducible generation (same seed + prompt = similar output)
+- `--temperature` or `--temp`: Creativity control (0.0-2.0, lower = more deterministic)
+- `--reasoning` or `-r`: Reasoning effort for complex prompts (`minimal` or `high`)
 - `--api-key`: OpenRouter API key (overrides .env file)
 
 ## Example Use Cases
@@ -158,7 +184,8 @@ If the script fails, read the error message and address the issue before retryin
 - Be specific about what changes you want (e.g., "change the sky to sunset colors" vs "edit the sky")
 - Reference specific elements in the image when possible
 - For best results, use clear and detailed editing instructions
-- Gemini 3 Pro supports both generation and editing through OpenRouter
+- Gemini 3.1 Flash supports both generation and editing through OpenRouter
+- Use `--reasoning high` for prompts requiring spatial/compositional accuracy
 
 ## Integration with Other Skills
 

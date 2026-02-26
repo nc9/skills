@@ -10,7 +10,7 @@
 """
 Generate Image Skill
 
-Generate and edit images using OpenRouter API with Google Gemini 3 Pro.
+Generate and edit images using OpenRouter API with Gemini 3.1 Flash (Nano Banana 2).
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ app = typer.Typer(help="Generate and edit images using OpenRouter API")
 
 # --- Config ---
 
-DEFAULT_MODEL = "google/gemini-3-pro-image-preview"
+DEFAULT_MODEL = "google/gemini-3.1-flash-image-preview"
 DEFAULT_OUTPUT = "generated_image.png"
 
 MIME_TYPES = {
@@ -42,7 +42,25 @@ MIME_TYPES = {
     ".webp": "image/webp",
 }
 
-ASPECT_RATIOS = ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"]
+ASPECT_RATIOS = [
+    "1:1",
+    "16:9",
+    "9:16",
+    "4:3",
+    "3:4",
+    "3:2",
+    "2:3",
+    "4:5",
+    "5:4",
+    "21:9",
+    # Gemini 3.1 Flash extended ratios
+    "1:4",
+    "4:1",
+    "1:8",
+    "8:1",
+]
+
+IMAGE_SIZES = ["0.5K", "1K", "2K", "4K"]
 
 
 # --- Helpers ---
@@ -96,6 +114,10 @@ def generateImage(
     input_image: Path | None = None,
     aspect_ratio: str | None = None,
     max_tokens: int = 1024,
+    image_size: str | None = None,
+    seed: int | None = None,
+    temperature: float | None = None,
+    reasoning: str | None = None,
 ) -> dict:
     """Generate or edit an image using OpenRouter API."""
     is_editing = input_image is not None
@@ -120,8 +142,19 @@ def generateImage(
         "max_tokens": max_tokens,
     }
 
+    image_config = {}
     if aspect_ratio:
-        request_body["image_config"] = {"aspect_ratio": aspect_ratio}
+        image_config["aspect_ratio"] = aspect_ratio
+    if image_size:
+        image_config["image_size"] = image_size
+    if image_config:
+        request_body["image_config"] = image_config
+    if seed is not None:
+        request_body["seed"] = seed
+    if temperature is not None:
+        request_body["temperature"] = temperature
+    if reasoning:
+        request_body["reasoning"] = {"effort": reasoning}
 
     response = requests.post(
         url="https://openrouter.ai/api/v1/chat/completions",
@@ -211,13 +244,47 @@ def generate(
             help="Max output tokens (higher = more detail, default 1024)",
         ),
     ] = 1024,
+    image_size: Annotated[
+        str | None,
+        typer.Option(
+            "--size",
+            help="Image resolution (0.5K, 1K, 2K, 4K). Default: 1K",
+        ),
+    ] = None,
+    seed: Annotated[
+        int | None,
+        typer.Option("--seed", "-s", help="Seed for reproducible generation"),
+    ] = None,
+    temperature: Annotated[
+        float | None,
+        typer.Option("--temperature", "--temp", help="Creativity (0.0-2.0)"),
+    ] = None,
+    reasoning: Annotated[
+        str | None,
+        typer.Option(
+            "--reasoning",
+            "-r",
+            help="Reasoning effort for complex prompts (minimal, high)",
+        ),
+    ] = None,
     api_key: Annotated[
         str | None, typer.Option("--api-key", help="OpenRouter API key")
     ] = None,
 ) -> None:
     """Generate or edit an image."""
     key = getApiKey(api_key)
-    generateImage(prompt, output, key, input, aspect_ratio, max_tokens)
+    generateImage(
+        prompt,
+        output,
+        key,
+        input,
+        aspect_ratio,
+        max_tokens,
+        image_size,
+        seed,
+        temperature,
+        reasoning,
+    )
 
 
 @app.callback(invoke_without_command=True)
@@ -246,6 +313,29 @@ def main(
             help="Max output tokens (higher = more detail, default 1024)",
         ),
     ] = 1024,
+    image_size: Annotated[
+        str | None,
+        typer.Option(
+            "--size",
+            help="Image resolution (0.5K, 1K, 2K, 4K). Default: 1K",
+        ),
+    ] = None,
+    seed: Annotated[
+        int | None,
+        typer.Option("--seed", "-s", help="Seed for reproducible generation"),
+    ] = None,
+    temperature: Annotated[
+        float | None,
+        typer.Option("--temperature", "--temp", help="Creativity (0.0-2.0)"),
+    ] = None,
+    reasoning: Annotated[
+        str | None,
+        typer.Option(
+            "--reasoning",
+            "-r",
+            help="Reasoning effort for complex prompts (minimal, high)",
+        ),
+    ] = None,
     api_key: Annotated[
         str | None, typer.Option("--api-key", help="OpenRouter API key")
     ] = None,
@@ -253,7 +343,18 @@ def main(
     """Generate or edit images using OpenRouter API."""
     if ctx.invoked_subcommand is None and prompt:
         key = getApiKey(api_key)
-        generateImage(prompt, output, key, input, aspect_ratio, max_tokens)
+        generateImage(
+            prompt,
+            output,
+            key,
+            input,
+            aspect_ratio,
+            max_tokens,
+            image_size,
+            seed,
+            temperature,
+            reasoning,
+        )
     elif ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
 
