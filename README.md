@@ -36,6 +36,7 @@ npx claude-plugins install @nc9/skills/optimize-image-web
 npx claude-plugins install @nc9/skills/generate-image
 npx claude-plugins install @nc9/skills/remove-background
 npx claude-plugins install @nc9/skills/google-indexing
+npx claude-plugins install @nc9/skills/google-search-console
 
 # Install for user (all projects)
 npx claude-plugins install @nc9/skills/keyword-research --user
@@ -68,6 +69,7 @@ Or browse via UI: `/plugin` → `Browse and install plugins` → `nc9-skills`
 | [generate-image](./generate-image/) | AI image generation/editing via FLUX, Gemini | [OpenRouter](https://openrouter.ai/) |
 | [remove-background](./remove-background/) | AI background removal using BiRefNet | None (local) |
 | [google-indexing](./google-indexing/) | Submit, remove, and check URL indexing status with Google | [Google Cloud](https://console.cloud.google.com/) (free) |
+| [google-search-console](./google-search-console/) | Search analytics, URL inspection, sitemaps, and properties | [Google Cloud](https://console.cloud.google.com/) (free) |
 
 ## Configuration
 
@@ -84,7 +86,7 @@ PARALLEL_API_KEY=your_api_key
 # OpenRouter (generate-image)
 OPENROUTER_API_KEY=your_api_key
 
-# Google Indexing API (google-indexing)
+# Google Indexing API & Search Console (google-indexing, google-search-console)
 GOOGLE_INDEXING_KEY_FILE=/path/to/service-account-key.json
 ```
 
@@ -101,6 +103,8 @@ After installing, just describe what you need:
 - "Generate an illustration of a sunset over mountains"
 - "Remove the background from this photo"
 - "Submit these URLs to Google for indexing"
+- "Check if my pages are indexed in Google"
+- "Show top search queries for my site"
 
 Claude automatically invokes the appropriate skill.
 
