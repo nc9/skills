@@ -27,14 +27,14 @@ Generate and edit high-quality images using Gemini 3.1 Flash (Nano Banana 2) via
 
 ## Quick Start
 
-Use the `scripts/generate_image.py` script to generate or edit images:
+Use the `scripts/generate_image` script to generate or edit images:
 
 ```bash
 # Generate a new image
-scripts/generate_image.py "A beautiful sunset over mountains"
+scripts/generate_image "A beautiful sunset over mountains"
 
 # Edit an existing image
-scripts/generate_image.py "Make the sky purple" --input photo.jpg
+scripts/generate_image "Make the sky purple" --input photo.jpg
 ```
 
 This generates/edits an image and saves it as `generated_image.png` in the current directory.
@@ -60,62 +60,62 @@ The script will automatically detect the `.env` file and provide clear error mes
 
 ### Basic generation
 ```bash
-scripts/generate_image.py "Your prompt here"
+scripts/generate_image "Your prompt here"
 ```
 
 ### Custom output path
 ```bash
-scripts/generate_image.py "Abstract art" --output artwork.png
+scripts/generate_image "Abstract art" --output artwork.png
 ```
 
 ### Specify aspect ratio
 ```bash
-scripts/generate_image.py "A panoramic mountain landscape" --aspect-ratio 16:9
-scripts/generate_image.py "Social media story image" -a 9:16
-scripts/generate_image.py "Wide banner image" -a 8:1
+scripts/generate_image "A panoramic mountain landscape" --aspect-ratio 16:9
+scripts/generate_image "Social media story image" -a 9:16
+scripts/generate_image "Wide banner image" -a 8:1
 ```
 
 ### High resolution output
 ```bash
-scripts/generate_image.py "Product photo of a watch" --size 4K
-scripts/generate_image.py "Quick thumbnail" --size 0.5K
+scripts/generate_image "Product photo of a watch" --size 4K
+scripts/generate_image "Quick thumbnail" --size 0.5K
 ```
 
 ### Edit an existing image
 ```bash
-scripts/generate_image.py "Make the background blue" --input photo.jpg
+scripts/generate_image "Make the background blue" --input photo.jpg
 ```
 
 ### Edit with custom output
 ```bash
-scripts/generate_image.py "Remove the text from the image" --input screenshot.png --output cleaned.png
+scripts/generate_image "Remove the text from the image" --input screenshot.png --output cleaned.png
 ```
 
 ### Higher detail output
 ```bash
-scripts/generate_image.py "Detailed architectural blueprint of a modern house" --max-tokens 2048
+scripts/generate_image "Detailed architectural blueprint of a modern house" --max-tokens 2048
 ```
 
 ### Reproducible generation (seed)
 ```bash
-scripts/generate_image.py "A red fox in autumn forest" --seed 42 -o fox.png
+scripts/generate_image "A red fox in autumn forest" --seed 42 -o fox.png
 ```
 
 ### High creativity
 ```bash
-scripts/generate_image.py "Abstract dreamscape" --temperature 1.8 -o dream.png
+scripts/generate_image "Abstract dreamscape" --temperature 1.8 -o dream.png
 ```
 
 ### Reasoning for complex prompts
 ```bash
-scripts/generate_image.py "A technically accurate cross-section of a jet engine" --reasoning high
+scripts/generate_image "A technically accurate cross-section of a jet engine" --reasoning high
 ```
 
 ### Multiple images
 Run the script multiple times with different prompts or output paths:
 ```bash
-scripts/generate_image.py "Image 1 description" --output image1.png
-scripts/generate_image.py "Image 2 description" --output image2.png
+scripts/generate_image "Image 1 description" --output image1.png
+scripts/generate_image "Image 2 description" --output image2.png
 ```
 
 ## Script Parameters
@@ -136,28 +136,28 @@ scripts/generate_image.py "Image 2 description" --output image2.png
 ### For Scientific Documents
 ```bash
 # Generate a conceptual illustration for a paper
-python scripts/generate_image.py "Microscopic view of cancer cells being attacked by immunotherapy agents, scientific illustration style" --output figures/immunotherapy_concept.png
+scripts/generate_image "Microscopic view of cancer cells being attacked by immunotherapy agents, scientific illustration style" --output figures/immunotherapy_concept.png
 
 # Create a visual for a presentation
-python scripts/generate_image.py "DNA double helix structure with highlighted mutation site, modern scientific visualization" --output slides/dna_mutation.png
+scripts/generate_image "DNA double helix structure with highlighted mutation site, modern scientific visualization" --output slides/dna_mutation.png
 ```
 
 ### For Presentations and Posters
 ```bash
 # Title slide background
-python scripts/generate_image.py "Abstract blue and white background with subtle molecular patterns, professional presentation style" --output slides/background.png
+scripts/generate_image "Abstract blue and white background with subtle molecular patterns, professional presentation style" --output slides/background.png
 
 # Poster hero image
-python scripts/generate_image.py "Laboratory setting with modern equipment, photorealistic, well-lit" --output poster/hero.png
+scripts/generate_image "Laboratory setting with modern equipment, photorealistic, well-lit" --output poster/hero.png
 ```
 
 ### For General Visual Content
 ```bash
 # Website or documentation images
-python scripts/generate_image.py "Professional team collaboration around a digital whiteboard, modern office" --output docs/team_collaboration.png
+scripts/generate_image "Professional team collaboration around a digital whiteboard, modern office" --output docs/team_collaboration.png
 
 # Marketing materials
-python scripts/generate_image.py "Futuristic AI brain concept with glowing neural networks" --output marketing/ai_concept.png
+scripts/generate_image "Futuristic AI brain concept with glowing neural networks" --output marketing/ai_concept.png
 ```
 
 ## Error Handling

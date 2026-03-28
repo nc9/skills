@@ -38,16 +38,16 @@ export DATAFORSEO_PASSWORD=your_api_password
 
 ```bash
 # Keyword suggestions (contains seed term)
-./scripts/keyword_research.py suggestions "python tutorial" -n 20
+./scripts/keyword_research suggestions "python tutorial" -n 20
 
 # Related keywords (semantically related)
-./scripts/keyword_research.py related "python tutorial" -n 20
+./scripts/keyword_research related "python tutorial" -n 20
 
 # Multiple seeds
-./scripts/keyword_research.py suggestions "react hooks" "vue composition api" -n 20
+./scripts/keyword_research suggestions "react hooks" "vue composition api" -n 20
 
 # Table format for human review
-./scripts/keyword_research.py suggestions "ai tools" -f table
+./scripts/keyword_research suggestions "ai tools" -f table
 ```
 
 ## Options

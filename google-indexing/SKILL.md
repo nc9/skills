@@ -26,25 +26,25 @@ Notify Google when pages are added, updated, or removed using the Web Search Ind
 ### Submit URLs (new/updated)
 
 ```bash
-./scripts/google_indexing.py submit "https://example.com/page1" "https://example.com/page2"
+./scripts/google_indexing submit "https://example.com/page1" "https://example.com/page2"
 ```
 
 ### Remove URLs (deleted)
 
 ```bash
-./scripts/google_indexing.py remove "https://example.com/old-page"
+./scripts/google_indexing remove "https://example.com/old-page"
 ```
 
 ### Check Indexing Status
 
 ```bash
-./scripts/google_indexing.py status "https://example.com/page1"
+./scripts/google_indexing status "https://example.com/page1"
 ```
 
 ### View API Quotas
 
 ```bash
-./scripts/google_indexing.py quota
+./scripts/google_indexing quota
 ```
 
 ## URL Input
@@ -53,13 +53,13 @@ All URL commands accept multiple input methods:
 
 ```bash
 # Positional args
-./scripts/google_indexing.py submit "https://a.com" "https://b.com"
+./scripts/google_indexing submit "https://a.com" "https://b.com"
 
 # From file
-./scripts/google_indexing.py submit --file urls.txt
+./scripts/google_indexing submit --file urls.txt
 
 # From stdin
-cat urls.txt | ./scripts/google_indexing.py submit
+cat urls.txt | ./scripts/google_indexing submit
 ```
 
 ## Options
@@ -123,15 +123,15 @@ cat urls.txt | ./scripts/google_indexing.py submit
 
 Submit a single URL:
 ```bash
-./scripts/google_indexing.py submit "https://example.com/new-post"
+./scripts/google_indexing submit "https://example.com/new-post"
 ```
 
 Bulk submit from file:
 ```bash
-./scripts/google_indexing.py submit --file sitemap-urls.txt -f table
+./scripts/google_indexing submit --file sitemap-urls.txt -f table
 ```
 
 Check status with table output:
 ```bash
-./scripts/google_indexing.py status "https://example.com/page" -f table
+./scripts/google_indexing status "https://example.com/page" -f table
 ```

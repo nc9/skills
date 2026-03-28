@@ -28,39 +28,39 @@ Query Search Console data: indexing status, search performance, sitemaps, and pr
 ### Inspect URL Indexing Status
 
 ```bash
-./scripts/google_search_console.py inspect "https://example.com/page" --site sc-domain:example.com
-./scripts/google_search_console.py inspect --file urls.txt --site sc-domain:example.com
+./scripts/google_search_console inspect "https://example.com/page" --site sc-domain:example.com
+./scripts/google_search_console inspect --file urls.txt --site sc-domain:example.com
 ```
 
 ### Search Performance (Analytics)
 
 ```bash
 # Top queries (last 28 days)
-./scripts/google_search_console.py performance --site sc-domain:example.com
+./scripts/google_search_console performance --site sc-domain:example.com
 
 # Top pages
-./scripts/google_search_console.py performance --site sc-domain:example.com --dimension page
+./scripts/google_search_console performance --site sc-domain:example.com --dimension page
 
 # Filter by query
-./scripts/google_search_console.py performance --site sc-domain:example.com --query "seo"
+./scripts/google_search_console performance --site sc-domain:example.com --query "seo"
 
 # Custom date range
-./scripts/google_search_console.py performance --site sc-domain:example.com --start-date 2024-01-01 --end-date 2024-01-31
+./scripts/google_search_console performance --site sc-domain:example.com --start-date 2024-01-01 --end-date 2024-01-31
 
 # Limit rows with table output
-./scripts/google_search_console.py performance --site sc-domain:example.com -n 20 -f table
+./scripts/google_search_console performance --site sc-domain:example.com -n 20 -f table
 ```
 
 ### List Sitemaps
 
 ```bash
-./scripts/google_search_console.py sitemaps --site sc-domain:example.com
+./scripts/google_search_console sitemaps --site sc-domain:example.com
 ```
 
 ### List Properties
 
 ```bash
-./scripts/google_search_console.py sites
+./scripts/google_search_console sites
 ```
 
 ## Options
@@ -151,15 +151,15 @@ Query Search Console data: indexing status, search performance, sitemaps, and pr
 
 Check if a page is indexed:
 ```bash
-./scripts/google_search_console.py inspect "https://example.com/page" --site sc-domain:example.com
+./scripts/google_search_console inspect "https://example.com/page" --site sc-domain:example.com
 ```
 
 Top 10 queries with table output:
 ```bash
-./scripts/google_search_console.py performance --site sc-domain:example.com -n 10 -f table
+./scripts/google_search_console performance --site sc-domain:example.com -n 10 -f table
 ```
 
 List all verified properties:
 ```bash
-./scripts/google_search_console.py sites -f table
+./scripts/google_search_console sites -f table
 ```

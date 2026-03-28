@@ -29,7 +29,7 @@ Environment variables must be set:
 Returns keywords containing the seed term with metrics:
 
 ```bash
-./scripts/keyword_research.py suggestions "seed keyword" -n 20
+./scripts/keyword_research suggestions "seed keyword" -n 20
 ```
 
 ### Get Related Keywords
@@ -37,7 +37,7 @@ Returns keywords containing the seed term with metrics:
 Returns semantically related keywords:
 
 ```bash
-./scripts/keyword_research.py related "seed keyword" -n 20
+./scripts/keyword_research related "seed keyword" -n 20
 ```
 
 ## Options
@@ -72,17 +72,17 @@ Default JSON output for easy parsing:
 
 Research keywords for a blog post:
 ```bash
-./scripts/keyword_research.py suggestions "python tutorial" -n 30
+./scripts/keyword_research suggestions "python tutorial" -n 30
 ```
 
 Compare multiple seed keywords:
 ```bash
-./scripts/keyword_research.py suggestions "react hooks" "vue composition api" -n 20
+./scripts/keyword_research suggestions "react hooks" "vue composition api" -n 20
 ```
 
 Get table output for human review:
 ```bash
-./scripts/keyword_research.py suggestions "ai tools" -f table
+./scripts/keyword_research suggestions "ai tools" -f table
 ```
 
 ## Interpreting Results

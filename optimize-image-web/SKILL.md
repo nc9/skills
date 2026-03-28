@@ -26,27 +26,27 @@ No API keys required. Uses Pillow for image processing.
 ### Convert Single Image
 
 ```bash
-./scripts/optimize_image.py convert image.png -w 800 -q 85
+./scripts/optimize_image convert image.png -w 800 -q 85
 ```
 
 ### Generate Preset Sizes
 
 ```bash
-./scripts/optimize_image.py preset image.png favicon
-./scripts/optimize_image.py preset logo.png icon-set
-./scripts/optimize_image.py preset hero.jpg og
+./scripts/optimize_image preset image.png favicon
+./scripts/optimize_image preset logo.png icon-set
+./scripts/optimize_image preset hero.jpg og
 ```
 
 ### Show Image Info
 
 ```bash
-./scripts/optimize_image.py info image.png
+./scripts/optimize_image info image.png
 ```
 
 ### List Available Presets
 
 ```bash
-./scripts/optimize_image.py presets
+./scripts/optimize_image presets
 ```
 
 ## Options
@@ -103,25 +103,25 @@ Default JSON for LLM parsing:
 
 Optimize hero image for web:
 ```bash
-./scripts/optimize_image.py convert hero.jpg -w 1920 -q 80
+./scripts/optimize_image convert hero.jpg -w 1920 -q 80
 ```
 
 Generate favicons from logo:
 ```bash
-./scripts/optimize_image.py preset logo.png favicon -o ./public
+./scripts/optimize_image preset logo.png favicon -o ./public
 ```
 
 Generate social media cards:
 ```bash
-./scripts/optimize_image.py preset banner.png social -o ./assets
+./scripts/optimize_image preset banner.png social -o ./assets
 ```
 
 Generate icon set for PWA:
 ```bash
-./scripts/optimize_image.py preset icon.png icon-set -o ./public/icons -p app
+./scripts/optimize_image preset icon.png icon-set -o ./public/icons -p app
 ```
 
 Check original image details:
 ```bash
-./scripts/optimize_image.py info photo.jpg
+./scripts/optimize_image info photo.jpg
 ```

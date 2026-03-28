@@ -22,22 +22,22 @@ Pillow is installed automatically via uv when running the script.
 
 ```bash
 # Convert single image
-./scripts/optimize_image.py convert image.png -w 800 -q 85
+./scripts/optimize_image convert image.png -w 800 -q 85
 
 # Generate favicon set
-./scripts/optimize_image.py preset logo.png favicon -o ./public
+./scripts/optimize_image preset logo.png favicon -o ./public
 
 # Generate social media cards
-./scripts/optimize_image.py preset banner.png social -o ./assets
+./scripts/optimize_image preset banner.png social -o ./assets
 
 # Generate PWA icon set
-./scripts/optimize_image.py preset icon.png icon-set -o ./public/icons -p app
+./scripts/optimize_image preset icon.png icon-set -o ./public/icons -p app
 
 # Show image info
-./scripts/optimize_image.py info photo.jpg
+./scripts/optimize_image info photo.jpg
 
 # List available presets
-./scripts/optimize_image.py presets
+./scripts/optimize_image presets
 ```
 
 ## Commands

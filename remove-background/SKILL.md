@@ -21,7 +21,7 @@ No API keys required. Model downloads automatically on first run (~100MB, cached
 ## Command
 
 ```bash
-./scripts/remove_background.py <input_image> [options]
+./scripts/remove_background <input_image> [options]
 ```
 
 ## Options
@@ -39,22 +39,22 @@ No API keys required. Model downloads automatically on first run (~100MB, cached
 
 ```bash
 # Basic usage - outputs photo_nobg.png
-./scripts/remove_background.py photo.jpg
+./scripts/remove_background photo.jpg
 
 # Smart crop to subject
-./scripts/remove_background.py photo.jpg --crop
+./scripts/remove_background photo.jpg --crop
 
 # Smart crop with 20px padding
-./scripts/remove_background.py photo.jpg --crop --padding 20
+./scripts/remove_background photo.jpg --crop --padding 20
 
 # Custom output path
-./scripts/remove_background.py photo.jpg -o transparent.png
+./scripts/remove_background photo.jpg -o transparent.png
 
 # Force CPU (if MPS has issues)
-./scripts/remove_background.py photo.jpg --device cpu
+./scripts/remove_background photo.jpg --device cpu
 
 # Human-readable output
-./scripts/remove_background.py photo.jpg --format table
+./scripts/remove_background photo.jpg --format table
 ```
 
 ## Output Format

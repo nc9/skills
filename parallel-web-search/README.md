@@ -36,23 +36,23 @@ export PARALLEL_API_KEY=your_api_key_here
 
 ```bash
 # Basic search
-./scripts/parallel_search.py search -o "Latest developments in fusion energy"
+./scripts/parallel_search search -o "Latest developments in fusion energy"
 
 # With keyword queries (improves results)
-./scripts/parallel_search.py search \
+./scripts/parallel_search search \
   -o "Recent quantum computing breakthroughs" \
   -q "quantum computing 2024" \
   -q "quantum supremacy"
 
 # Restrict to specific domains
-./scripts/parallel_search.py search \
+./scripts/parallel_search search \
   -o "Climate change research" \
   -d "nature.com" \
   -d "science.org" \
   -n 5
 
 # Table format for review
-./scripts/parallel_search.py search -o "AI safety news" -f table
+./scripts/parallel_search search -o "AI safety news" -f table
 ```
 
 ## Options

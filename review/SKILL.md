@@ -33,7 +33,7 @@ If user mentions @file.ts or specific files, include content.
 ### 4. Run Review
 ```bash
 # Default: reviews uncommitted changes if any exist
-./scripts/review.py codex \
+./scripts/review codex \
   --issues "#123,PROJ-456" \
   --plan ./plan.md \
   --files "src/api.ts"
@@ -44,7 +44,7 @@ If user mentions @file.ts or specific files, include content.
 ## Command
 
 ```bash
-./scripts/review.py codex [OPTIONS]
+./scripts/review codex [OPTIONS]
 ```
 
 ## Options
@@ -65,7 +65,7 @@ If user mentions @file.ts or specific files, include content.
 Gather context without running review:
 
 ```bash
-./scripts/review.py context [OPTIONS]
+./scripts/review context [OPTIONS]
 ```
 
 | Option | Description |
@@ -91,20 +91,20 @@ Codex outputs its review directly to the terminal.
 
 ```bash
 # Default: review uncommitted changes (or prompt if none)
-./scripts/review.py codex
+./scripts/review codex
 
 # Explicitly review uncommitted changes
-./scripts/review.py codex --uncommitted
+./scripts/review codex --uncommitted
 
 # Review changes against specific branch
-./scripts/review.py codex --base main
+./scripts/review codex --base main
 
 # Review with GitHub issue context
-./scripts/review.py codex --issues "#123"
+./scripts/review codex --issues "#123"
 
 # Review with plan file
-./scripts/review.py codex --plan ./plan.md
+./scripts/review codex --plan ./plan.md
 
 # Gather context as JSON (without running review)
-./scripts/review.py context --issues "#123" --output json
+./scripts/review context --issues "#123" --output json
 ```

@@ -12,7 +12,7 @@ Generate a complete set of favicon files from a single source image. Creates PNG
 ## Quick Start
 
 ```bash
-./generate_favicon.py logo.png
+./generate_favicon logo.png
 ```
 
 This creates in `public/`:
@@ -28,7 +28,7 @@ This creates in `public/`:
 ## Options
 
 ```bash
-./generate_favicon.py [OPTIONS] INPUT_PATH
+./generate_favicon [OPTIONS] INPUT_PATH
 ```
 
 | Option | Description | Default |
@@ -43,25 +43,25 @@ This creates in `public/`:
 ### Basic Usage
 
 ```bash
-./generate_favicon.py logo.png
+./generate_favicon logo.png
 ```
 
 ### Custom Output Directory
 
 ```bash
-./generate_favicon.py logo.png -o static/assets
+./generate_favicon logo.png -o static/assets
 ```
 
 ### With Custom Theme
 
 ```bash
-./generate_favicon.py icon.png -n "My App" -t "#8844dd"
+./generate_favicon icon.png -n "My App" -t "#8844dd"
 ```
 
 ### Skip Manifest
 
 ```bash
-./generate_favicon.py logo.png --no-manifest
+./generate_favicon logo.png --no-manifest
 ```
 
 ## Generated Files

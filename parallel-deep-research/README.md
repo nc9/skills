@@ -36,16 +36,16 @@ export PARALLEL_API_KEY=your_api_key_here
 
 ```bash
 # Basic research
-./scripts/parallel_research.py research "Key players in the AI chip market"
+./scripts/parallel_research research "Key players in the AI chip market"
 
 # Higher quality (slower)
-./scripts/parallel_research.py research "Renewable energy trends 2024" -p ultra
+./scripts/parallel_research research "Renewable energy trends 2024" -p ultra
 
 # Markdown output
-./scripts/parallel_research.py research "EV battery technology advances" -f markdown
+./scripts/parallel_research research "EV battery technology advances" -f markdown
 
 # Extended timeout for complex research
-./scripts/parallel_research.py research "Cloud provider competitive analysis" -t 1800
+./scripts/parallel_research research "Cloud provider competitive analysis" -t 1800
 ```
 
 ## Options

@@ -24,7 +24,7 @@ Environment variable must be set:
 ## Command
 
 ```bash
-./scripts/parallel_search.py search -o "objective" [-q "query"] [-n limit]
+./scripts/parallel_search search -o "objective" [-q "query"] [-n limit]
 ```
 
 ## Options
@@ -61,12 +61,12 @@ Default JSON for LLM parsing:
 
 Basic search:
 ```bash
-./scripts/parallel_search.py search -o "What are the latest developments in fusion energy?"
+./scripts/parallel_search search -o "What are the latest developments in fusion energy?"
 ```
 
 With keyword queries (improves results):
 ```bash
-./scripts/parallel_search.py search \
+./scripts/parallel_search search \
   -o "Recent breakthroughs in quantum computing" \
   -q "quantum computing 2024" \
   -q "quantum supremacy"
@@ -74,7 +74,7 @@ With keyword queries (improves results):
 
 Restrict to specific domains:
 ```bash
-./scripts/parallel_search.py search \
+./scripts/parallel_search search \
   -o "Climate change research findings" \
   -d "nature.com" \
   -d "science.org" \
@@ -83,7 +83,7 @@ Restrict to specific domains:
 
 Human-readable table output:
 ```bash
-./scripts/parallel_search.py search -o "AI safety news" -f table
+./scripts/parallel_search search -o "AI safety news" -f table
 ```
 
 ## Best Practices

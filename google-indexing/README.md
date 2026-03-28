@@ -51,39 +51,39 @@ npx claude-plugins install @nc9/skills/google-indexing --user
 ### Submit URLs (new/updated)
 
 ```bash
-./scripts/google_indexing.py submit "https://example.com/new-page"
-./scripts/google_indexing.py submit "https://example.com/page1" "https://example.com/page2"
+./scripts/google_indexing submit "https://example.com/new-page"
+./scripts/google_indexing submit "https://example.com/page1" "https://example.com/page2"
 ```
 
 ### Remove URLs (deleted)
 
 ```bash
-./scripts/google_indexing.py remove "https://example.com/old-page"
+./scripts/google_indexing remove "https://example.com/old-page"
 ```
 
 ### Check Indexing Status
 
 ```bash
-./scripts/google_indexing.py status "https://example.com/page1"
+./scripts/google_indexing status "https://example.com/page1"
 ```
 
 ### View API Quotas
 
 ```bash
-./scripts/google_indexing.py quota
+./scripts/google_indexing quota
 ```
 
 ### Bulk URL Input
 
 ```bash
 # From file (one URL per line, # comments supported)
-./scripts/google_indexing.py submit --file urls.txt
+./scripts/google_indexing submit --file urls.txt
 
 # From stdin
-cat urls.txt | ./scripts/google_indexing.py submit
+cat urls.txt | ./scripts/google_indexing submit
 
 # Table output for human review
-./scripts/google_indexing.py submit --file urls.txt -f table
+./scripts/google_indexing submit --file urls.txt -f table
 ```
 
 ## Options

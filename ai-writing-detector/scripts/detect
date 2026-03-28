@@ -1,0 +1,386 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "pangram-sdk",
+#     "python-dotenv",
+#     "typer",
+#     "python-frontmatter",
+#     "beautifulsoup4",
+# ]
+# ///
+"""AI writing detector using Pangram API."""
+
+import json
+import mimetypes
+import os
+import re
+from pathlib import Path
+from typing import Annotated, Optional
+
+import typer
+from dotenv import load_dotenv
+
+app = typer.Typer(help="Detect AI-generated text using Pangram API")
+
+# Input format detection
+MARKDOWN_EXTENSIONS = {".md", ".mdx", ".markdown", ".mdown", ".mkd"}
+HTML_EXTENSIONS = {".html", ".htm", ".xhtml"}
+
+
+def loadApiKey(api_key: Optional[str] = None) -> str:
+    """Load API key from arg, env, or .env files."""
+    if api_key:
+        return api_key
+
+    key = os.getenv("PANGRAM_API_KEY")
+    if key:
+        return key
+
+    env_paths = [
+        Path.cwd() / ".env",
+        Path.cwd() / ".env.local",
+        Path.home() / ".env",
+    ]
+
+    for env_path in env_paths:
+        if env_path.exists():
+            load_dotenv(env_path)
+            key = os.getenv("PANGRAM_API_KEY")
+            if key:
+                return key
+
+    typer.echo(
+        "Error: PANGRAM_API_KEY not found. Set it via:\n"
+        "  - Environment variable: export PANGRAM_API_KEY=<key>\n"
+        "  - .env file with PANGRAM_API_KEY=<key>\n"
+        "  - CLI flag: --api-key <key>",
+        err=True,
+    )
+    raise typer.Exit(1)
+
+
+def detectInputFormat(file_path: Path) -> str:
+    """Detect input format from file extension."""
+    ext = file_path.suffix.lower()
+    if ext in MARKDOWN_EXTENSIONS:
+        return "markdown"
+    if ext in HTML_EXTENSIONS:
+        return "html"
+    return "text"
+
+
+def parseMarkdown(content: str) -> str:
+    """Parse markdown to plain text, extracting frontmatter metadata."""
+    import frontmatter
+
+    # Parse frontmatter
+    post = frontmatter.loads(content)
+
+    parts = []
+
+    # Extract useful frontmatter fields
+    if post.metadata:
+        if "title" in post.metadata:
+            parts.append(post.metadata["title"])
+        if "excerpt" in post.metadata:
+            parts.append(post.metadata["excerpt"])
+        if "description" in post.metadata:
+            parts.append(post.metadata["description"])
+        if "summary" in post.metadata:
+            parts.append(post.metadata["summary"])
+
+    # Get markdown body
+    body = post.content
+
+    # Strip markdown syntax
+    # Remove code blocks
+    body = re.sub(r"```[\s\S]*?```", "", body)
+    body = re.sub(r"`[^`]+`", "", body)
+
+    # Remove images
+    body = re.sub(r"!\[[^\]]*\]\([^)]+\)", "", body)
+
+    # Convert links to just text
+    body = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", body)
+
+    # Remove headers markup but keep text
+    body = re.sub(r"^#{1,6}\s+", "", body, flags=re.MULTILINE)
+
+    # Remove bold/italic
+    body = re.sub(r"\*\*([^*]+)\*\*", r"\1", body)
+    body = re.sub(r"\*([^*]+)\*", r"\1", body)
+    body = re.sub(r"__([^_]+)__", r"\1", body)
+    body = re.sub(r"_([^_]+)_", r"\1", body)
+
+    # Remove blockquotes
+    body = re.sub(r"^>\s+", "", body, flags=re.MULTILINE)
+
+    # Remove horizontal rules
+    body = re.sub(r"^[-*_]{3,}\s*$", "", body, flags=re.MULTILINE)
+
+    # Remove list markers
+    body = re.sub(r"^[\s]*[-*+]\s+", "", body, flags=re.MULTILINE)
+    body = re.sub(r"^[\s]*\d+\.\s+", "", body, flags=re.MULTILINE)
+
+    # Remove HTML tags that might be in markdown
+    body = re.sub(r"<[^>]+>", "", body)
+
+    # Collapse multiple newlines
+    body = re.sub(r"\n{3,}", "\n\n", body)
+
+    parts.append(body.strip())
+
+    return "\n\n".join(filter(None, parts))
+
+
+def parseHtml(content: str) -> str:
+    """Parse HTML to plain text."""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(content, "html.parser")
+
+    # Remove script and style elements
+    for element in soup(["script", "style", "meta", "link", "noscript"]):
+        element.decompose()
+
+    # Get text
+    text = soup.get_text(separator=" ", strip=True)
+
+    # Collapse multiple spaces/newlines
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r" +", " ", text)
+
+    return text.strip()
+
+
+def parseContent(content: str, input_format: str) -> str:
+    """Parse content based on format."""
+    if input_format == "markdown":
+        return parseMarkdown(content)
+    if input_format == "html":
+        return parseHtml(content)
+    return content
+
+
+def isTextFile(file_path: Path) -> bool:
+    """Check if file is likely a text file."""
+    mime_type, _ = mimetypes.guess_type(str(file_path))
+    if mime_type:
+        if mime_type.startswith("text/"):
+            return True
+        if mime_type in (
+            "application/json",
+            "application/xml",
+            "application/javascript",
+        ):
+            return True
+        if mime_type.startswith(("image/", "audio/", "video/", "application/octet")):
+            return False
+
+    text_extensions = {
+        ".txt", ".md", ".mdx", ".markdown", ".mdown", ".mkd", ".rst", ".tex",
+        ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".c", ".cpp", ".h",
+        ".html", ".htm", ".xhtml", ".css", ".scss", ".json", ".xml", ".yaml", ".yml", ".toml",
+        ".sh", ".bash", ".zsh", ".fish",
+        ".sql", ".graphql",
+        ".csv", ".log",
+    }
+    if file_path.suffix.lower() in text_extensions:
+        return True
+
+    try:
+        with open(file_path, "rb") as f:
+            chunk = f.read(8192)
+            if b"\x00" in chunk:
+                return False
+            chunk.decode("utf-8")
+            return True
+    except (UnicodeDecodeError, OSError):
+        return False
+
+
+def formatTable(result: dict) -> str:
+    """Format result as human-readable table."""
+    lines = [
+        "=" * 50,
+        "AI WRITING DETECTION RESULTS",
+        "=" * 50,
+        "",
+        f"{'Metric':<25} {'Value':>20}",
+        "-" * 50,
+    ]
+
+    if "fraction_ai" in result:
+        lines.append(f"{'AI Fraction':<25} {result['fraction_ai']:>19.1%}")
+        lines.append(f"{'AI-Assisted Fraction':<25} {result['fraction_ai_assisted']:>19.1%}")
+        lines.append(f"{'Human Fraction':<25} {result['fraction_human']:>19.1%}")
+        lines.append(f"{'AI Segments':<25} {result['num_ai_segments']:>20}")
+    elif "ai_likelihood" in result:
+        lines.append(f"{'AI Likelihood':<25} {result['ai_likelihood']:>19.1%}")
+
+    if "windows" in result and result["windows"]:
+        lines.extend(["", "-" * 50, "SEGMENT ANALYSIS", "-" * 50])
+        for i, window in enumerate(result["windows"][:5]):
+            label = window.get("label", "unknown")
+            score = window.get("ai_assistance_score", 0)
+            conf = window.get("confidence", "unknown")
+            # confidence can be string ("Medium") or float
+            conf_str = f"{conf:.2f}" if isinstance(conf, (int, float)) else conf
+            lines.append(f"  Segment {i+1}: {label} (score={score:.2f}, conf={conf_str})")
+        if len(result["windows"]) > 5:
+            lines.append(f"  ... and {len(result['windows']) - 5} more segments")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def readAndParse(file_path: Path, input_format: Optional[str]) -> str:
+    """Read file and parse to plain text."""
+    # Validate file exists
+    if not file_path.exists():
+        typer.echo(f"Error: File not found: {file_path}", err=True)
+        raise typer.Exit(1)
+
+    if not file_path.is_file():
+        typer.echo(f"Error: Not a file: {file_path}", err=True)
+        raise typer.Exit(1)
+
+    if not isTextFile(file_path):
+        typer.echo(
+            f"Error: File does not appear to be text: {file_path}\n"
+            "Supported: .txt, .md, .html, etc.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        typer.echo(f"Error: Could not decode file as UTF-8: {file_path}", err=True)
+        raise typer.Exit(1)
+
+    if not content.strip():
+        typer.echo("Error: File is empty", err=True)
+        raise typer.Exit(1)
+
+    # Determine format
+    fmt = input_format if input_format else detectInputFormat(file_path)
+
+    # Parse content
+    return parseContent(content, fmt)
+
+
+@app.command()
+def detect(
+    file_path: Annotated[Path, typer.Argument(help="Path to text file to analyze")],
+    api_key: Annotated[
+        Optional[str], typer.Option("--api-key", "-k", help="Pangram API key")
+    ] = None,
+    short: Annotated[
+        bool, typer.Option("--short", "-s", help="Use short prediction (faster, 512 token limit)")
+    ] = False,
+    output: Annotated[
+        str, typer.Option("--output", "-o", help="Output format: json or table")
+    ] = "json",
+    input_format: Annotated[
+        Optional[str], typer.Option("--input-format", "-i", help="Input format: text, markdown, html (auto-detected from extension)")
+    ] = None,
+) -> None:
+    """Detect AI-generated content in a text file."""
+    # Validate input format
+    if input_format and input_format not in ("text", "markdown", "html"):
+        typer.echo(f"Error: Invalid input format: {input_format}. Use: text, markdown, html", err=True)
+        raise typer.Exit(1)
+
+    # Read and parse content
+    content = readAndParse(file_path, input_format)
+
+    # Load API key
+    key = loadApiKey(api_key)
+
+    # Call pangram
+    try:
+        from pangram import Pangram
+
+        client = Pangram(api_key=key)
+
+        if short:
+            result = client.predict_short(content)
+        else:
+            result = client.predict(content)
+
+    except ImportError:
+        typer.echo("Error: pangram-sdk not installed", err=True)
+        raise typer.Exit(1)
+    except Exception as e:
+        typer.echo(f"Error calling Pangram API: {e}", err=True)
+        raise typer.Exit(1)
+
+    # Output result
+    if output == "table":
+        typer.echo(formatTable(result))
+    else:
+        typer.echo(json.dumps(result, indent=2))
+
+
+@app.command()
+def plagiarism(
+    file_path: Annotated[Path, typer.Argument(help="Path to text file to check")],
+    api_key: Annotated[
+        Optional[str], typer.Option("--api-key", "-k", help="Pangram API key")
+    ] = None,
+    output: Annotated[
+        str, typer.Option("--output", "-o", help="Output format: json or table")
+    ] = "json",
+    input_format: Annotated[
+        Optional[str], typer.Option("--input-format", "-i", help="Input format: text, markdown, html (auto-detected from extension)")
+    ] = None,
+) -> None:
+    """Check text file for plagiarism."""
+    # Validate input format
+    if input_format and input_format not in ("text", "markdown", "html"):
+        typer.echo(f"Error: Invalid input format: {input_format}. Use: text, markdown, html", err=True)
+        raise typer.Exit(1)
+
+    # Read and parse content
+    content = readAndParse(file_path, input_format)
+
+    # Load API key
+    key = loadApiKey(api_key)
+
+    # Call pangram
+    try:
+        from pangram import Pangram
+
+        client = Pangram(api_key=key)
+        result = client.check_plagiarism(content)
+
+    except Exception as e:
+        typer.echo(f"Error calling Pangram API: {e}", err=True)
+        raise typer.Exit(1)
+
+    # Output result
+    if output == "table":
+        lines = [
+            "=" * 50,
+            "PLAGIARISM CHECK RESULTS",
+            "=" * 50,
+            "",
+            f"{'Plagiarism Detected':<25} {str(result.get('plagiarism_detected', False)):>20}",
+            f"{'Percent Plagiarized':<25} {result.get('percent_plagiarized', 0):>19.1%}",
+            f"{'Sentences Checked':<25} {result.get('total_sentences_checked', 0):>20}",
+            f"{'Plagiarized Sentences':<25} {result.get('plagiarized_sentences', 0):>20}",
+            "",
+        ]
+        if result.get("plagiarized_content"):
+            lines.extend(["-" * 50, "SOURCES", "-" * 50])
+            for item in result["plagiarized_content"][:5]:
+                lines.append(f"  URL: {item.get('source_url', 'unknown')}")
+        typer.echo("\n".join(lines))
+    else:
+        typer.echo(json.dumps(result, indent=2))
+
+
+if __name__ == "__main__":
+    app()

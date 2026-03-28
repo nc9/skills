@@ -36,13 +36,13 @@ export OPENROUTER_API_KEY=your_api_key_here
 
 ```bash
 # Generate image
-./scripts/generate_image.py "A sunset over mountains"
+./scripts/generate_image "A sunset over mountains"
 
 # Edit existing image
-./scripts/generate_image.py "Make the sky purple" --input photo.jpg
+./scripts/generate_image "Make the sky purple" --input photo.jpg
 
 # Custom output path
-./scripts/generate_image.py "Abstract art" --output artwork.png
+./scripts/generate_image "Abstract art" --output artwork.png
 ```
 
 ## Model

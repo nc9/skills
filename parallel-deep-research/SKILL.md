@@ -24,7 +24,7 @@ Environment variable must be set:
 ## Command
 
 ```bash
-./scripts/parallel_research.py research "query" [options]
+./scripts/parallel_research research "query" [options]
 ```
 
 ## Options
@@ -74,22 +74,22 @@ Default JSON for LLM parsing:
 
 Basic research:
 ```bash
-./scripts/parallel_research.py research "What are the key players in the AI chip market and their competitive positions?"
+./scripts/parallel_research research "What are the key players in the AI chip market and their competitive positions?"
 ```
 
 Higher quality (slower):
 ```bash
-./scripts/parallel_research.py research "Comprehensive analysis of renewable energy trends 2024" -p ultra
+./scripts/parallel_research research "Comprehensive analysis of renewable energy trends 2024" -p ultra
 ```
 
 Human-readable output:
 ```bash
-./scripts/parallel_research.py research "Electric vehicle battery technology advances" -f markdown
+./scripts/parallel_research research "Electric vehicle battery technology advances" -f markdown
 ```
 
 Extended timeout for complex research:
 ```bash
-./scripts/parallel_research.py research "Deep competitive analysis of cloud providers" -t 1800
+./scripts/parallel_research research "Deep competitive analysis of cloud providers" -t 1800
 ```
 
 ## Notes
