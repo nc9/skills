@@ -1,0 +1,591 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "httpx",
+#     "python-dotenv",
+#     "typer",
+# ]
+# ///
+"""Google Search skill using Serper API."""
+
+from __future__ import annotations
+
+import json
+import os
+from enum import Enum
+from typing import Annotated
+
+import httpx
+import typer
+from dotenv import load_dotenv
+
+# --- Config ---
+
+BASE_URL = "https://google.serper.dev"
+
+load_dotenv()
+
+app = typer.Typer(help="Google search via Serper API")
+
+
+# --- Types ---
+
+
+class OutputFormat(str, Enum):
+    json = "json"
+    table = "table"
+
+
+# --- Core ---
+
+
+def getApiKey() -> str:
+    key = os.getenv("SERPER_API_KEY")
+    if not key:
+        typer.echo("Error: SERPER_API_KEY required", err=True)
+        raise typer.Exit(1)
+    return key
+
+
+def buildRequest(
+    q: str,
+    num: int = 10,
+    gl: str = "us",
+    hl: str = "en",
+    page: int = 1,
+    tbs: str | None = None,
+    location: str | None = None,
+) -> dict:
+    params: dict = {"q": q, "num": num, "gl": gl, "hl": hl}
+    if page > 1:
+        params["page"] = page
+    if tbs:
+        params["tbs"] = f"qdr:{tbs}"
+    if location:
+        params["location"] = location
+    return params
+
+
+def executeSearch(endpoint: str, params: dict) -> dict:
+    api_key = getApiKey()
+    try:
+        with httpx.Client() as client:
+            resp = client.post(
+                f"{BASE_URL}{endpoint}",
+                headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
+                json=params,
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPStatusError as e:
+        typer.echo(
+            f"Error: HTTP {e.response.status_code} — {e.response.text}", err=True
+        )
+        raise typer.Exit(1)
+    except httpx.RequestError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+
+# --- Parsers ---
+
+
+def parseWebResults(data: dict) -> dict:
+    result: dict = {}
+    if ab := data.get("answerBox"):
+        result["answerBox"] = {
+            "title": ab.get("title"),
+            "answer": ab.get("answer") or ab.get("snippet"),
+        }
+    if kg := data.get("knowledgeGraph"):
+        result["knowledgeGraph"] = {
+            "title": kg.get("title"),
+            "type": kg.get("type"),
+            "description": kg.get("description"),
+        }
+    result["results"] = [
+        {
+            "position": r.get("position"),
+            "title": r.get("title"),
+            "link": r.get("link"),
+            "snippet": r.get("snippet"),
+        }
+        for r in data.get("organic", [])
+    ]
+    return result
+
+
+def parseNewsResults(data: dict) -> list[dict]:
+    return [
+        {
+            "title": r.get("title"),
+            "link": r.get("link"),
+            "snippet": r.get("snippet"),
+            "date": r.get("date"),
+            "source": r.get("source"),
+        }
+        for r in data.get("news", [])
+    ]
+
+
+def parseImageResults(data: dict) -> list[dict]:
+    return [
+        {
+            "title": r.get("title"),
+            "imageUrl": r.get("imageUrl"),
+            "link": r.get("link"),
+            "source": r.get("source"),
+        }
+        for r in data.get("images", [])
+    ]
+
+
+def parseVideoResults(data: dict) -> list[dict]:
+    return [
+        {
+            "title": r.get("title"),
+            "link": r.get("link"),
+            "source": r.get("source"),
+            "date": r.get("date"),
+            "duration": r.get("duration"),
+        }
+        for r in data.get("videos", [])
+    ]
+
+
+def parsePlaceResults(data: dict) -> list[dict]:
+    return [
+        {
+            "title": r.get("title"),
+            "address": r.get("address"),
+            "rating": r.get("rating"),
+            "ratingCount": r.get("ratingCount"),
+            "type": r.get("type"),
+            "phone": r.get("phone"),
+            "website": r.get("website"),
+            "cid": r.get("cid"),
+        }
+        for r in data.get("places", [])
+    ]
+
+
+def parseShoppingResults(data: dict) -> list[dict]:
+    return [
+        {
+            "title": r.get("title"),
+            "link": r.get("link"),
+            "source": r.get("source"),
+            "price": r.get("price"),
+            "rating": r.get("rating"),
+        }
+        for r in data.get("shopping", [])
+    ]
+
+
+def parseScholarResults(data: dict) -> list[dict]:
+    return [
+        {
+            "title": r.get("title"),
+            "link": r.get("link"),
+            "snippet": r.get("snippet"),
+            "year": r.get("year"),
+            "citedBy": r.get("citedBy", {}).get("total")
+            if isinstance(r.get("citedBy"), dict)
+            else r.get("citedBy"),
+        }
+        for r in data.get("organic", [])
+    ]
+
+
+def parsePatentResults(data: dict) -> list[dict]:
+    return [
+        {
+            "title": r.get("title"),
+            "link": r.get("link"),
+            "snippet": r.get("snippet"),
+        }
+        for r in data.get("organic", [])
+    ]
+
+
+def parseAutocompleteResults(data: dict) -> list[str]:
+    return [s.get("value", "") for s in data.get("suggestions", [])]
+
+
+def parseReviewResults(data: dict) -> list[dict]:
+    return [
+        {
+            "author": r.get("author"),
+            "rating": r.get("rating"),
+            "date": r.get("date"),
+            "snippet": r.get("snippet") or r.get("text"),
+        }
+        for r in data.get("reviews", [])
+    ]
+
+
+# --- Table Formatters ---
+
+
+def formatWebTable(parsed: dict) -> str:
+    lines: list[str] = []
+    if ab := parsed.get("answerBox"):
+        lines.append(f"Answer: {ab.get('answer', '')}")
+        lines.append("")
+    if kg := parsed.get("knowledgeGraph"):
+        lines.append(f"Knowledge Graph: {kg.get('title', '')} ({kg.get('type', '')})")
+        if desc := kg.get("description"):
+            lines.append(f"  {desc[:120]}")
+        lines.append("")
+    lines.append(f"{'#':<4} {'Title':<50} {'Link'}")
+    lines.append("-" * 110)
+    for r in parsed.get("results", []):
+        pos = r.get("position", "")
+        title = (r.get("title") or "")[:50]
+        link = r.get("link", "")
+        lines.append(f"{pos:<4} {title:<50} {link}")
+        if snippet := r.get("snippet"):
+            lines.append(f"     {snippet[:100]}")
+    return "\n".join(lines)
+
+
+def formatNewsTable(results: list[dict]) -> str:
+    lines = [f"{'Title':<50} {'Source':<20} {'Date'}", "-" * 90]
+    for r in results:
+        title = (r.get("title") or "")[:50]
+        source = (r.get("source") or "")[:20]
+        date = r.get("date") or ""
+        lines.append(f"{title:<50} {source:<20} {date}")
+    return "\n".join(lines)
+
+
+def formatImageTable(results: list[dict]) -> str:
+    lines = [f"{'Title':<40} {'Source':<20} {'Image URL'}", "-" * 100]
+    for r in results:
+        title = (r.get("title") or "")[:40]
+        source = (r.get("source") or "")[:20]
+        url = r.get("imageUrl") or ""
+        lines.append(f"{title:<40} {source:<20} {url}")
+    return "\n".join(lines)
+
+
+def formatVideoTable(results: list[dict]) -> str:
+    lines = [f"{'Title':<50} {'Source':<15} {'Duration':<10} {'Date'}", "-" * 95]
+    for r in results:
+        title = (r.get("title") or "")[:50]
+        source = (r.get("source") or "")[:15]
+        duration = (r.get("duration") or "")[:10]
+        date = r.get("date") or ""
+        lines.append(f"{title:<50} {source:<15} {duration:<10} {date}")
+    return "\n".join(lines)
+
+
+def formatPlaceTable(results: list[dict]) -> str:
+    lines = [
+        f"{'Title':<30} {'Rating':>6} {'Reviews':>8} {'Address':<35} {'Phone'}",
+        "-" * 100,
+    ]
+    for r in results:
+        title = (r.get("title") or "")[:30]
+        rating = r.get("rating") or ""
+        count = r.get("ratingCount") or ""
+        address = (r.get("address") or "")[:35]
+        phone = r.get("phone") or ""
+        lines.append(
+            f"{title:<30} {str(rating):>6} {str(count):>8} {address:<35} {phone}"
+        )
+    return "\n".join(lines)
+
+
+def formatShoppingTable(results: list[dict]) -> str:
+    lines = [f"{'Title':<45} {'Price':<12} {'Rating':>6} {'Source'}", "-" * 85]
+    for r in results:
+        title = (r.get("title") or "")[:45]
+        price = (r.get("price") or "")[:12]
+        rating = r.get("rating") or ""
+        source = r.get("source") or ""
+        lines.append(f"{title:<45} {price:<12} {str(rating):>6} {source}")
+    return "\n".join(lines)
+
+
+def formatScholarTable(results: list[dict]) -> str:
+    lines = [f"{'Title':<55} {'Year':<6} {'Cited'}", "-" * 75]
+    for r in results:
+        title = (r.get("title") or "")[:55]
+        year = r.get("year") or ""
+        cited = r.get("citedBy") or ""
+        lines.append(f"{title:<55} {str(year):<6} {cited}")
+    return "\n".join(lines)
+
+
+def formatPatentTable(results: list[dict]) -> str:
+    lines = [f"{'Title':<60} {'Link'}", "-" * 100]
+    for r in results:
+        title = (r.get("title") or "")[:60]
+        link = r.get("link") or ""
+        lines.append(f"{title:<60} {link}")
+    return "\n".join(lines)
+
+
+def formatReviewTable(results: list[dict]) -> str:
+    lines = [f"{'Author':<25} {'Rating':>6} {'Date':<12} {'Snippet'}", "-" * 90]
+    for r in results:
+        author = (r.get("author") or "")[:25]
+        rating = r.get("rating") or ""
+        date = (r.get("date") or "")[:12]
+        snippet = (r.get("snippet") or "")[:40]
+        lines.append(f"{author:<25} {str(rating):>6} {date:<12} {snippet}")
+    return "\n".join(lines)
+
+
+# --- Output Helper ---
+
+
+def output(data, table_fn, fmt: OutputFormat) -> None:
+    if fmt == OutputFormat.table:
+        typer.echo(table_fn(data))
+    else:
+        typer.echo(json.dumps(data, indent=2, default=str))
+
+
+# --- Commands ---
+
+
+@app.command()
+def web(
+    query: Annotated[str, typer.Argument(help="Search query")],
+    num: Annotated[int, typer.Option("--num", "-n", help="Number of results")] = 10,
+    gl: Annotated[str, typer.Option("--country", "--gl", help="Country code")] = "us",
+    hl: Annotated[str, typer.Option("--lang", "--hl", help="Language code")] = "en",
+    page: Annotated[int, typer.Option("--page", "-p", help="Page number")] = 1,
+    time: Annotated[
+        str | None, typer.Option("--time", "-t", help="Time filter: h, d, w, m, y")
+    ] = None,
+    location: Annotated[
+        str | None, typer.Option("--location", "-l", help="Location")
+    ] = None,
+    fmt: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """Web search."""
+    params = buildRequest(query, num, gl, hl, page, time, location)
+    data = executeSearch("/search", params)
+    parsed = parseWebResults(data)
+    output(parsed, formatWebTable, fmt)
+
+
+@app.command()
+def news(
+    query: Annotated[str, typer.Argument(help="Search query")],
+    num: Annotated[int, typer.Option("--num", "-n", help="Number of results")] = 10,
+    gl: Annotated[str, typer.Option("--country", "--gl", help="Country code")] = "us",
+    hl: Annotated[str, typer.Option("--lang", "--hl", help="Language code")] = "en",
+    page: Annotated[int, typer.Option("--page", "-p", help="Page number")] = 1,
+    time: Annotated[
+        str | None, typer.Option("--time", "-t", help="Time filter: h, d, w, m, y")
+    ] = None,
+    location: Annotated[
+        str | None, typer.Option("--location", "-l", help="Location")
+    ] = None,
+    fmt: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """News search."""
+    params = buildRequest(query, num, gl, hl, page, time, location)
+    data = executeSearch("/news", params)
+    parsed = parseNewsResults(data)
+    output(parsed, formatNewsTable, fmt)
+
+
+@app.command()
+def images(
+    query: Annotated[str, typer.Argument(help="Search query")],
+    num: Annotated[int, typer.Option("--num", "-n", help="Number of results")] = 10,
+    gl: Annotated[str, typer.Option("--country", "--gl", help="Country code")] = "us",
+    hl: Annotated[str, typer.Option("--lang", "--hl", help="Language code")] = "en",
+    page: Annotated[int, typer.Option("--page", "-p", help="Page number")] = 1,
+    time: Annotated[
+        str | None, typer.Option("--time", "-t", help="Time filter: h, d, w, m, y")
+    ] = None,
+    location: Annotated[
+        str | None, typer.Option("--location", "-l", help="Location")
+    ] = None,
+    fmt: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """Image search."""
+    params = buildRequest(query, num, gl, hl, page, time, location)
+    data = executeSearch("/images", params)
+    parsed = parseImageResults(data)
+    output(parsed, formatImageTable, fmt)
+
+
+@app.command()
+def videos(
+    query: Annotated[str, typer.Argument(help="Search query")],
+    num: Annotated[int, typer.Option("--num", "-n", help="Number of results")] = 10,
+    gl: Annotated[str, typer.Option("--country", "--gl", help="Country code")] = "us",
+    hl: Annotated[str, typer.Option("--lang", "--hl", help="Language code")] = "en",
+    page: Annotated[int, typer.Option("--page", "-p", help="Page number")] = 1,
+    time: Annotated[
+        str | None, typer.Option("--time", "-t", help="Time filter: h, d, w, m, y")
+    ] = None,
+    location: Annotated[
+        str | None, typer.Option("--location", "-l", help="Location")
+    ] = None,
+    fmt: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """Video search."""
+    params = buildRequest(query, num, gl, hl, page, time, location)
+    data = executeSearch("/videos", params)
+    parsed = parseVideoResults(data)
+    output(parsed, formatVideoTable, fmt)
+
+
+@app.command()
+def places(
+    query: Annotated[str, typer.Argument(help="Search query")],
+    num: Annotated[int, typer.Option("--num", "-n", help="Number of results")] = 10,
+    gl: Annotated[str, typer.Option("--country", "--gl", help="Country code")] = "us",
+    hl: Annotated[str, typer.Option("--lang", "--hl", help="Language code")] = "en",
+    page: Annotated[int, typer.Option("--page", "-p", help="Page number")] = 1,
+    location: Annotated[
+        str | None, typer.Option("--location", "-l", help="Location")
+    ] = None,
+    fmt: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """Places/local search. Use cid from results for reviews command."""
+    params = buildRequest(query, num, gl, hl, page, location=location)
+    data = executeSearch("/places", params)
+    parsed = parsePlaceResults(data)
+    output(parsed, formatPlaceTable, fmt)
+
+
+@app.command()
+def maps(
+    query: Annotated[str, typer.Argument(help="Search query")],
+    num: Annotated[int, typer.Option("--num", "-n", help="Number of results")] = 10,
+    gl: Annotated[str, typer.Option("--country", "--gl", help="Country code")] = "us",
+    hl: Annotated[str, typer.Option("--lang", "--hl", help="Language code")] = "en",
+    page: Annotated[int, typer.Option("--page", "-p", help="Page number")] = 1,
+    location: Annotated[
+        str | None, typer.Option("--location", "-l", help="Location")
+    ] = None,
+    fmt: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """Maps search."""
+    params = buildRequest(query, num, gl, hl, page, location=location)
+    data = executeSearch("/maps", params)
+    parsed = parsePlaceResults(data)
+    output(parsed, formatPlaceTable, fmt)
+
+
+@app.command()
+def shopping(
+    query: Annotated[str, typer.Argument(help="Search query")],
+    num: Annotated[int, typer.Option("--num", "-n", help="Number of results")] = 10,
+    gl: Annotated[str, typer.Option("--country", "--gl", help="Country code")] = "us",
+    hl: Annotated[str, typer.Option("--lang", "--hl", help="Language code")] = "en",
+    page: Annotated[int, typer.Option("--page", "-p", help="Page number")] = 1,
+    location: Annotated[
+        str | None, typer.Option("--location", "-l", help="Location")
+    ] = None,
+    fmt: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """Shopping/product search."""
+    params = buildRequest(query, num, gl, hl, page, location=location)
+    data = executeSearch("/shopping", params)
+    parsed = parseShoppingResults(data)
+    output(parsed, formatShoppingTable, fmt)
+
+
+@app.command()
+def scholar(
+    query: Annotated[str, typer.Argument(help="Search query")],
+    num: Annotated[int, typer.Option("--num", "-n", help="Number of results")] = 10,
+    gl: Annotated[str, typer.Option("--country", "--gl", help="Country code")] = "us",
+    hl: Annotated[str, typer.Option("--lang", "--hl", help="Language code")] = "en",
+    page: Annotated[int, typer.Option("--page", "-p", help="Page number")] = 1,
+    fmt: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """Academic/scholarly search."""
+    params = buildRequest(query, num, gl, hl, page)
+    data = executeSearch("/scholar", params)
+    parsed = parseScholarResults(data)
+    output(parsed, formatScholarTable, fmt)
+
+
+@app.command()
+def patents(
+    query: Annotated[str, typer.Argument(help="Search query")],
+    num: Annotated[int, typer.Option("--num", "-n", help="Number of results")] = 10,
+    gl: Annotated[str, typer.Option("--country", "--gl", help="Country code")] = "us",
+    hl: Annotated[str, typer.Option("--lang", "--hl", help="Language code")] = "en",
+    page: Annotated[int, typer.Option("--page", "-p", help="Page number")] = 1,
+    fmt: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """Patent search."""
+    params = buildRequest(query, num, gl, hl, page)
+    data = executeSearch("/patents", params)
+    parsed = parsePatentResults(data)
+    output(parsed, formatPatentTable, fmt)
+
+
+@app.command()
+def autocomplete(
+    query: Annotated[str, typer.Argument(help="Search query")],
+    gl: Annotated[str, typer.Option("--country", "--gl", help="Country code")] = "us",
+    hl: Annotated[str, typer.Option("--lang", "--hl", help="Language code")] = "en",
+    fmt: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """Autocomplete suggestions."""
+    params = {"q": query, "gl": gl, "hl": hl}
+    data = executeSearch("/autocomplete", params)
+    parsed = parseAutocompleteResults(data)
+    if fmt == OutputFormat.table:
+        for s in parsed:
+            typer.echo(s)
+    else:
+        typer.echo(json.dumps(parsed, indent=2))
+
+
+@app.command()
+def reviews(
+    data_id: Annotated[
+        str,
+        typer.Option("--data-id", "-d", help="Place data_id/cid from places search"),
+    ],
+    gl: Annotated[str, typer.Option("--country", "--gl", help="Country code")] = "us",
+    hl: Annotated[str, typer.Option("--lang", "--hl", help="Language code")] = "en",
+    fmt: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """Reviews for a place. Get data_id from places command cid field."""
+    params = {"data_id": data_id, "gl": gl, "hl": hl}
+    data = executeSearch("/reviews", params)
+    parsed = parseReviewResults(data)
+    output(parsed, formatReviewTable, fmt)
+
+
+if __name__ == "__main__":
+    app()
