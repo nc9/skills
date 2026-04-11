@@ -1,0 +1,246 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "browserbase",
+#     "httpx",
+#     "playwright",
+#     "python-dotenv",
+#     "typer",
+# ]
+# ///
+"""Fetch web pages via Browserbase with proxy and captcha solving."""
+
+from __future__ import annotations
+
+import json
+import os
+from enum import Enum
+from typing import Annotated
+
+import typer
+from dotenv import load_dotenv
+
+load_dotenv()
+
+app = typer.Typer(help="Fetch web pages via Browserbase with proxy + captcha solving")
+
+
+# --- Types ---
+
+
+class OutputFormat(str, Enum):
+    html = "html"
+    text = "text"
+    json = "json"
+
+
+# --- Config ---
+
+
+def getConfig() -> tuple[str, str]:
+    api_key = os.getenv("BROWSERBASE_API_KEY")
+    if not api_key:
+        typer.echo("Error: BROWSERBASE_API_KEY required", err=True)
+        raise typer.Exit(1)
+    project_id = os.getenv("BROWSERBASE_PROJECT_ID")
+    if not project_id:
+        typer.echo("Error: BROWSERBASE_PROJECT_ID required", err=True)
+        raise typer.Exit(1)
+    return api_key, project_id
+
+
+def createSession(
+    api_key: str,
+    project_id: str,
+    proxy: bool = True,
+    captcha: bool = True,
+    block_ads: bool = True,
+) -> dict:
+    import httpx
+
+    body: dict = {
+        "projectId": project_id,
+        "browserSettings": {
+            "solveCaptchas": captcha,
+            "blockAds": block_ads,
+        },
+    }
+    if proxy:
+        body["proxies"] = True
+
+    resp = httpx.post(
+        "https://api.browserbase.com/v1/sessions",
+        headers={"X-BB-API-Key": api_key, "Content-Type": "application/json"},
+        json=body,
+        timeout=30.0,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def releaseSession(api_key: str, session_id: str) -> None:
+    import httpx
+
+    try:
+        httpx.post(
+            f"https://api.browserbase.com/v1/sessions/{session_id}",
+            headers={"X-BB-API-Key": api_key, "Content-Type": "application/json"},
+            json={"status": "REQUEST_RELEASE"},
+            timeout=10.0,
+        )
+    except Exception:
+        pass
+
+
+# --- Commands ---
+
+
+@app.command()
+def fetch(
+    url: Annotated[str, typer.Argument(help="URL to fetch")],
+    fmt: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.text,
+    proxy: Annotated[
+        bool, typer.Option("--proxy/--no-proxy", help="Enable proxy")
+    ] = True,
+    captcha: Annotated[
+        bool, typer.Option("--captcha/--no-captcha", help="Enable captcha solving")
+    ] = True,
+    block_ads: Annotated[
+        bool, typer.Option("--block-ads/--no-block-ads", help="Block ads")
+    ] = True,
+    timeout: Annotated[
+        int, typer.Option("--timeout", "-t", help="Page load timeout in seconds")
+    ] = 30,
+    wait: Annotated[
+        int, typer.Option("--wait", "-w", help="Extra wait after load (ms)")
+    ] = 0,
+) -> None:
+    """Fetch a web page with proxy and captcha solving."""
+    from playwright.sync_api import sync_playwright
+
+    api_key, project_id = getConfig()
+
+    # Create session
+    try:
+        session = createSession(api_key, project_id, proxy, captcha, block_ads)
+    except Exception as e:
+        typer.echo(f"Error creating session: {e}", err=True)
+        raise typer.Exit(1)
+
+    session_id = session["id"]
+    connect_url = session.get(
+        "connectUrl", f"wss://connect.browserbase.com?sessionId={session_id}"
+    )
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.connect_over_cdp(connect_url)
+            context = browser.contexts[0]
+            page = context.pages[0]
+
+            page.goto(url, wait_until="domcontentloaded", timeout=timeout * 1000)
+            page.wait_for_load_state("networkidle", timeout=timeout * 1000)
+
+            if wait > 0:
+                page.wait_for_timeout(wait)
+
+            if fmt == OutputFormat.html:
+                typer.echo(page.content())
+            elif fmt == OutputFormat.text:
+                text = page.evaluate("() => document.body.innerText")
+                typer.echo(text)
+            elif fmt == OutputFormat.json:
+                result = {
+                    "url": page.url,
+                    "title": page.evaluate("() => document.title"),
+                    "content": page.evaluate("() => document.body.innerText"),
+                }
+                typer.echo(json.dumps(result, indent=2))
+
+            browser.close()
+    except Exception as e:
+        typer.echo(f"Error fetching page: {e}", err=True)
+        releaseSession(api_key, session_id)
+        raise typer.Exit(1)
+
+    releaseSession(api_key, session_id)
+
+
+@app.command()
+def fetch_many(
+    urls: Annotated[list[str], typer.Argument(help="URLs to fetch")],
+    fmt: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+    proxy: Annotated[
+        bool, typer.Option("--proxy/--no-proxy", help="Enable proxy")
+    ] = True,
+    captcha: Annotated[
+        bool, typer.Option("--captcha/--no-captcha", help="Enable captcha solving")
+    ] = True,
+    block_ads: Annotated[
+        bool, typer.Option("--block-ads/--no-block-ads", help="Block ads")
+    ] = True,
+    timeout: Annotated[
+        int, typer.Option("--timeout", "-t", help="Page load timeout in seconds")
+    ] = 30,
+    wait: Annotated[
+        int, typer.Option("--wait", "-w", help="Extra wait after load (ms)")
+    ] = 0,
+) -> None:
+    """Fetch multiple URLs in one session."""
+    from playwright.sync_api import sync_playwright
+
+    api_key, project_id = getConfig()
+
+    try:
+        session = createSession(api_key, project_id, proxy, captcha, block_ads)
+    except Exception as e:
+        typer.echo(f"Error creating session: {e}", err=True)
+        raise typer.Exit(1)
+
+    session_id = session["id"]
+    connect_url = session.get(
+        "connectUrl", f"wss://connect.browserbase.com?sessionId={session_id}"
+    )
+    results: list[dict] = []
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.connect_over_cdp(connect_url)
+            context = browser.contexts[0]
+            page = context.pages[0]
+
+            for u in urls:
+                try:
+                    page.goto(u, wait_until="domcontentloaded", timeout=timeout * 1000)
+                    page.wait_for_load_state("networkidle", timeout=timeout * 1000)
+                    if wait > 0:
+                        page.wait_for_timeout(wait)
+
+                    results.append(
+                        {
+                            "url": page.url,
+                            "title": page.evaluate("() => document.title"),
+                            "content": page.evaluate("() => document.body.innerText"),
+                        }
+                    )
+                except Exception as e:
+                    results.append({"url": u, "error": str(e)})
+                    typer.echo(f"Error fetching {u}: {e}", err=True)
+
+            browser.close()
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        releaseSession(api_key, session_id)
+        raise typer.Exit(1)
+
+    releaseSession(api_key, session_id)
+    typer.echo(json.dumps(results, indent=2))
+
+
+if __name__ == "__main__":
+    app()

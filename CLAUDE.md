@@ -113,6 +113,7 @@ ln -s /path/to/skills/<skill-name> ~/.claude/skills/<skill-name>
 | Skill | Purpose | API |
 |-------|---------|-----|
 | `ai-writing-detector` | Detect AI-generated text & plagiarism | [Pangram](https://pangram.cello.so/xGzUNafMfjD) |
+| `browserbase` | Fetch pages with proxy + captcha solving | [Browserbase](https://browserbase.com/) |
 | `generate-favicon` | Favicon/icon set generation | Pillow (local) |
 | `generate-image` | Image generation & editing | OpenRouter (Gemini) |
 | `google-indexing` | Submit/remove URLs for Google indexing | Google Indexing API |
