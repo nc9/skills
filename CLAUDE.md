@@ -125,3 +125,4 @@ ln -s /path/to/skills/<skill-name> ~/.claude/skills/<skill-name>
 | `parallel-web-search` | Agentic web search | Parallel AI |
 | `remove-background` | AI background removal | BiRefNet (local) |
 | `review` | AI code review via Codex | OpenAI Codex |
+| `wayback` | Search & fetch archived web pages | Wayback Machine (free) |

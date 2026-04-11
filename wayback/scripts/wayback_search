@@ -1,0 +1,389 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "httpx",
+#     "python-dotenv",
+#     "typer",
+# ]
+# ///
+"""Query the Wayback Machine for archived web pages."""
+
+from __future__ import annotations
+
+import json
+import re
+from enum import Enum
+from html.parser import HTMLParser
+from typing import Annotated
+
+import httpx
+import typer
+from dotenv import load_dotenv
+
+# --- Config ---
+
+CDX_URL = "https://web.archive.org/cdx/search/cdx"
+AVAILABILITY_URL = "https://archive.org/wayback/available"
+SNAPSHOT_BASE = "https://web.archive.org/web"
+DEFAULT_LIMIT = 25
+MAX_CONTENT_LENGTH = 10000
+REQUEST_TIMEOUT = 60.0
+
+load_dotenv()
+
+app = typer.Typer(help="Query the Wayback Machine / Internet Archive")
+
+
+# --- Types ---
+
+
+class OutputFormat(str, Enum):
+    json = "json"
+    table = "table"
+
+
+class MatchType(str, Enum):
+    exact = "exact"
+    prefix = "prefix"
+    host = "host"
+    domain = "domain"
+
+
+# --- HTML Text Extraction ---
+
+
+class TextExtractor(HTMLParser):
+    """Extract readable text from HTML, stripping tags and non-content elements."""
+
+    SKIP_TAGS = {
+        "script",
+        "style",
+        "noscript",
+        "iframe",
+        "nav",
+        "header",
+        "footer",
+        "aside",
+        "svg",
+    }
+
+    def __init__(self):
+        super().__init__()
+        self._text: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.SKIP_TAGS:
+            self._skip_depth += 1
+
+    def handle_endtag(self, tag):
+        if tag in self.SKIP_TAGS and self._skip_depth > 0:
+            self._skip_depth -= 1
+
+    def handle_data(self, data):
+        if self._skip_depth == 0:
+            stripped = data.strip()
+            if stripped:
+                self._text.append(stripped)
+
+    def getText(self) -> str:
+        return " ".join(self._text)
+
+
+def extractText(html: str, max_length: int = MAX_CONTENT_LENGTH) -> str:
+    """Extract readable text from HTML."""
+    # Remove wayback machine toolbar injection
+    html = re.sub(
+        r"<!-- BEGIN WAYBACK TOOLBAR INSERT -->.*?<!-- END WAYBACK TOOLBAR INSERT -->",
+        "",
+        html,
+        flags=re.DOTALL,
+    )
+
+    extractor = TextExtractor()
+    try:
+        extractor.feed(html)
+    except Exception:
+        pass
+    text = extractor.getText()
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:max_length] if len(text) > max_length else text
+
+
+def extractTitle(html: str) -> str | None:
+    """Extract <title> from HTML."""
+    match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+    if match:
+        title = match.group(1).strip()
+        title = re.sub(r"\s+", " ", title)
+        # Remove wayback prefix
+        title = re.sub(r"^Wayback Machine\s*[-:]\s*", "", title)
+        return title[:512] if title else None
+    return None
+
+
+# --- API Functions ---
+
+
+def cdxSearch(
+    url: str,
+    limit: int = DEFAULT_LIMIT,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    status_filter: str | None = None,
+    collapse: str | None = None,
+    match_type: str = "exact",
+    sort: str | None = None,
+) -> list[dict]:
+    """Query CDX API for snapshots."""
+    params: dict = {
+        "url": url,
+        "output": "json",
+        "fl": "timestamp,original,statuscode,mimetype,digest",
+        "limit": str(limit),
+        "matchType": match_type,
+    }
+    if from_date:
+        params["from"] = from_date
+    if to_date:
+        params["to"] = to_date
+    if status_filter:
+        params["filter"] = f"statuscode:{status_filter}"
+    if collapse:
+        params["collapse"] = collapse
+    if sort:
+        params["sort"] = sort
+
+    try:
+        resp = httpx.get(
+            CDX_URL, params=params, timeout=REQUEST_TIMEOUT, follow_redirects=True
+        )
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        typer.echo(f"Error: HTTP {e.response.status_code}", err=True)
+        raise typer.Exit(1)
+    except httpx.RequestError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+    data = resp.json()
+    if not data or len(data) < 2:
+        return []
+
+    headers = data[0]
+    return [dict(zip(headers, row)) for row in data[1:]]
+
+
+def checkAvailability(url: str, timestamp: str | None = None) -> dict | None:
+    """Check if a URL has a wayback snapshot."""
+    params: dict = {"url": url}
+    if timestamp:
+        params["timestamp"] = timestamp
+
+    try:
+        resp = httpx.get(AVAILABILITY_URL, params=params, timeout=REQUEST_TIMEOUT)
+        resp.raise_for_status()
+    except httpx.RequestError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+    data = resp.json()
+    snapshots = data.get("archived_snapshots", {})
+    return snapshots.get("closest") if snapshots else None
+
+
+def fetchSnapshot(
+    url: str, timestamp: str, raw: bool = False, max_chars: int = MAX_CONTENT_LENGTH
+) -> dict:
+    """Fetch snapshot content from the Wayback Machine."""
+    # id_ suffix returns original content without toolbar
+    archive_url = f"{SNAPSHOT_BASE}/{timestamp}id_/{url}"
+
+    try:
+        resp = httpx.get(archive_url, timeout=REQUEST_TIMEOUT, follow_redirects=True)
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        typer.echo(f"Error: HTTP {e.response.status_code}", err=True)
+        raise typer.Exit(1)
+    except httpx.RequestError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+    html = resp.text
+    result: dict = {
+        "url": url,
+        "timestamp": timestamp,
+        "archiveUrl": f"{SNAPSHOT_BASE}/{timestamp}/{url}",
+    }
+
+    if raw:
+        result["html"] = html
+    else:
+        result["title"] = extractTitle(html)
+        result["content"] = extractText(html, max_chars)
+
+    return result
+
+
+# --- Table Formatters ---
+
+
+def formatSnapshotsTable(snapshots: list[dict]) -> str:
+    lines = [
+        f"{'Timestamp':<16} {'Status':>6} {'MIME Type':<25} {'URL'}",
+        "-" * 90,
+    ]
+    for s in snapshots:
+        ts = s.get("timestamp", "")
+        status = s.get("statuscode", "")
+        mime = (s.get("mimetype") or "")[:25]
+        url = s.get("original", "")
+        lines.append(f"{ts:<16} {status:>6} {mime:<25} {url}")
+    return "\n".join(lines)
+
+
+def formatAvailabilityTable(snap: dict | None, url: str) -> str:
+    if not snap:
+        return f"No snapshot found for {url}"
+    return (
+        f"URL:       {url}\n"
+        f"Available: {snap.get('available', False)}\n"
+        f"Timestamp: {snap.get('timestamp', 'N/A')}\n"
+        f"Archive:   {snap.get('url', 'N/A')}\n"
+        f"Status:    {snap.get('status', 'N/A')}"
+    )
+
+
+# --- Commands ---
+
+
+@app.command()
+def search(
+    url: Annotated[str, typer.Argument(help="URL to search for")],
+    limit: Annotated[
+        int, typer.Option("--limit", "-n", help="Max results")
+    ] = DEFAULT_LIMIT,
+    from_date: Annotated[
+        str | None, typer.Option("--from", help="Start date (YYYYMMDD)")
+    ] = None,
+    to_date: Annotated[
+        str | None, typer.Option("--to", help="End date (YYYYMMDD)")
+    ] = None,
+    status: Annotated[
+        str | None,
+        typer.Option("--status", "-s", help="Filter by status code (e.g. 200)"),
+    ] = None,
+    collapse: Annotated[
+        str | None,
+        typer.Option("--collapse", help="Collapse by field (e.g. digest, timestamp:6)"),
+    ] = None,
+    match_type: Annotated[
+        MatchType, typer.Option("--match", "-m", help="URL match type")
+    ] = MatchType.exact,
+    fmt: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """Search CDX index for archived snapshots of a URL."""
+    snapshots = cdxSearch(
+        url, limit, from_date, to_date, status, collapse, match_type.value
+    )
+
+    if not snapshots:
+        typer.echo("No snapshots found.", err=True)
+        raise typer.Exit(1)
+
+    if fmt == OutputFormat.table:
+        typer.echo(formatSnapshotsTable(snapshots))
+        typer.echo(f"\n{len(snapshots)} snapshots found")
+    else:
+        typer.echo(json.dumps(snapshots, indent=2))
+
+
+@app.command()
+def check(
+    url: Annotated[str, typer.Argument(help="URL to check")],
+    timestamp: Annotated[
+        str | None, typer.Option("--timestamp", "-t", help="Check near this timestamp")
+    ] = None,
+    fmt: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """Check if a URL has a Wayback Machine snapshot."""
+    snap = checkAvailability(url, timestamp)
+
+    if fmt == OutputFormat.table:
+        typer.echo(formatAvailabilityTable(snap, url))
+    else:
+        typer.echo(json.dumps(snap or {"available": False, "url": url}, indent=2))
+
+
+@app.command()
+def latest(
+    url: Annotated[str, typer.Argument(help="URL to fetch")],
+    raw: Annotated[bool, typer.Option("--raw", help="Return raw HTML")] = False,
+    max_chars: Annotated[
+        int, typer.Option("--max-chars", "-c", help="Max content chars")
+    ] = MAX_CONTENT_LENGTH,
+    fmt: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """Fetch the latest snapshot content for a URL."""
+    # Try availability API first, fall back to CDX search
+    snap = checkAvailability(url)
+    if snap:
+        timestamp = snap["timestamp"]
+    else:
+        results = cdxSearch(url, limit=-1, status_filter="200")
+        if not results:
+            typer.echo(f"No snapshot found for {url}", err=True)
+            raise typer.Exit(1)
+        timestamp = results[0]["timestamp"]
+        url = results[0].get("original", url)
+    result = fetchSnapshot(url, timestamp, raw, max_chars)
+
+    if fmt == OutputFormat.table and not raw:
+        typer.echo(f"URL:       {result.get('url')}")
+        typer.echo(f"Timestamp: {result.get('timestamp')}")
+        typer.echo(f"Title:     {result.get('title', 'N/A')}")
+        typer.echo(f"Archive:   {result.get('archiveUrl')}")
+        typer.echo(f"\n{result.get('content', '')}")
+    else:
+        typer.echo(json.dumps(result, indent=2))
+
+
+@app.command()
+def get(
+    url: Annotated[str, typer.Argument(help="URL to fetch")],
+    timestamp: Annotated[
+        str,
+        typer.Option(
+            "--timestamp", "-t", help="Snapshot timestamp (YYYYMMDD or YYYYMMDDHHMMSS)"
+        ),
+    ],
+    raw: Annotated[bool, typer.Option("--raw", help="Return raw HTML")] = False,
+    max_chars: Annotated[
+        int, typer.Option("--max-chars", "-c", help="Max content chars")
+    ] = MAX_CONTENT_LENGTH,
+    fmt: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """Fetch a specific snapshot by timestamp."""
+    result = fetchSnapshot(url, timestamp, raw, max_chars)
+
+    if fmt == OutputFormat.table and not raw:
+        typer.echo(f"URL:       {result.get('url')}")
+        typer.echo(f"Timestamp: {result.get('timestamp')}")
+        typer.echo(f"Title:     {result.get('title', 'N/A')}")
+        typer.echo(f"Archive:   {result.get('archiveUrl')}")
+        typer.echo(f"\n{result.get('content', '')}")
+    else:
+        typer.echo(json.dumps(result, indent=2))
+
+
+if __name__ == "__main__":
+    app()
