@@ -3,13 +3,17 @@
 # requires-python = ">=3.11"
 # dependencies = ["python-dotenv", "typer", "httpx"]
 # ///
-"""Exhaustive code review using OpenAI Codex CLI."""
+"""Assemble a review bundle for OpenAI Codex (MCP or CLI) to consume."""
 
+import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
+import sys
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -20,15 +24,25 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = typer.Typer(
-    help="Exhaustive code review using OpenAI Codex", no_args_is_help=True
+    help="Assemble a structured review bundle for OpenAI Codex", no_args_is_help=True
 )
+
+
+@app.callback()
+def _main() -> None:
+    """Ensure typer treats commands as subcommands."""
+    pass
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+SKILL_DIR = SCRIPT_DIR.parent
+DEFAULT_BUNDLE_ROOT = Path.home() / ".claude" / "review-bundles"
 
 
 @dataclass
 class IssueRef:
     type: Literal["github", "linear", "sentry"]
     id: str
-    repo: str | None = None  # For github: org/repo
+    repo: str | None = None
 
 
 @dataclass
@@ -41,36 +55,28 @@ class IssueContext:
 
 
 def parseIssueRef(ref: str) -> IssueRef | None:
-    """Parse issue reference string into IssueRef."""
     ref = ref.strip()
 
-    # GitHub URL: https://github.com/org/repo/issues/123
     if match := re.match(
         r"https?://github\.com/([^/]+/[^/]+)/(?:issues|pull)/(\d+)", ref
     ):
         return IssueRef(type="github", id=match.group(2), repo=match.group(1))
 
-    # GitHub: org/repo#123
     if match := re.match(r"^([^/]+/[^#]+)#(\d+)$", ref):
         return IssueRef(type="github", id=match.group(2), repo=match.group(1))
 
-    # GitHub: #123 (current repo)
     if match := re.match(r"^#(\d+)$", ref):
         return IssueRef(type="github", id=match.group(1))
 
-    # Linear URL: https://linear.app/team/issue/PROJ-123
     if match := re.match(r"https?://linear\.app/[^/]+/issue/([A-Z]+-[A-Z0-9]+)", ref):
         return IssueRef(type="linear", id=match.group(1))
 
-    # Linear: PROJ-123
     if match := re.match(r"^([A-Z]+-[A-Z0-9]+)$", ref):
         return IssueRef(type="linear", id=match.group(1))
 
-    # Sentry URL: https://sentry.io/issues/12345 or https://org.sentry.io/issues/12345
     if match := re.match(r"https?://[^/]*sentry\.io/issues/(\d+)", ref):
         return IssueRef(type="sentry", id=match.group(1))
 
-    # Sentry: sentry:12345
     if match := re.match(r"^sentry:(\d+)$", ref):
         return IssueRef(type="sentry", id=match.group(1))
 
@@ -78,7 +84,6 @@ def parseIssueRef(ref: str) -> IssueRef | None:
 
 
 def fetchGithubIssue(ref: IssueRef) -> IssueContext | None:
-    """Fetch GitHub issue/PR via gh CLI."""
     try:
         for resource in ["issue", "pr"]:
             cmd = [
@@ -108,7 +113,6 @@ def fetchGithubIssue(ref: IssueRef) -> IssueContext | None:
 
 
 def fetchLinearIssue(ref: IssueRef) -> IssueContext | None:
-    """Fetch Linear issue via GraphQL API."""
     api_key = os.getenv("LINEAR_API_KEY")
     if not api_key:
         typer.echo("Warning: LINEAR_API_KEY not set, skipping Linear issue", err=True)
@@ -162,13 +166,9 @@ def fetchLinearIssue(ref: IssueRef) -> IssueContext | None:
 
 
 def fetchSentryIssue(ref: IssueRef) -> IssueContext | None:
-    """Fetch Sentry issue via REST API."""
     auth_token = os.getenv("SENTRY_AUTH_TOKEN")
-
     if not auth_token:
-        typer.echo(
-            "Warning: SENTRY_AUTH_TOKEN not set, skipping Sentry issue", err=True
-        )
+        typer.echo("Warning: SENTRY_AUTH_TOKEN not set, skipping Sentry issue", err=True)
         return None
 
     try:
@@ -176,13 +176,11 @@ def fetchSentryIssue(ref: IssueRef) -> IssueContext | None:
             headers = {"Authorization": f"Bearer {auth_token}"}
 
             resp = client.get(
-                f"https://sentry.io/api/0/issues/{ref.id}/",
-                headers=headers,
+                f"https://sentry.io/api/0/issues/{ref.id}/", headers=headers
             )
             resp.raise_for_status()
             issue = resp.json()
 
-            # Fetch latest event for stack trace
             event_resp = client.get(
                 f"https://sentry.io/api/0/issues/{ref.id}/events/latest/",
                 headers=headers,
@@ -190,11 +188,10 @@ def fetchSentryIssue(ref: IssueRef) -> IssueContext | None:
             event_data = ""
             if event_resp.status_code == 200:
                 event = event_resp.json()
-                if entries := event.get("entries", []):
-                    for entry in entries:
-                        if entry.get("type") == "exception":
-                            event_data = json.dumps(entry.get("data", {}), indent=2)
-                            break
+                for entry in event.get("entries", []):
+                    if entry.get("type") == "exception":
+                        event_data = json.dumps(entry.get("data", {}), indent=2)
+                        break
 
             description = issue.get("metadata", {}).get("value", "")
             if event_data:
@@ -212,7 +209,6 @@ def fetchSentryIssue(ref: IssueRef) -> IssueContext | None:
 
 
 def fetchIssue(ref: IssueRef) -> IssueContext | None:
-    """Fetch issue context based on type."""
     match ref.type:
         case "github":
             return fetchGithubIssue(ref)
@@ -223,75 +219,101 @@ def fetchIssue(ref: IssueRef) -> IssueContext | None:
     return None
 
 
-def printContext(
-    issue_contexts: list[IssueContext],
-    plan_path: str | None,
-    plan_content: str | None,
-    file_paths: list[str],
-) -> None:
-    """Print gathered context to stderr."""
-    if not issue_contexts and not plan_content and not file_paths:
-        return
-
-    typer.echo("\n" + "=" * 60, err=True)
-    typer.echo("GATHERED CONTEXT", err=True)
-    typer.echo("=" * 60, err=True)
-
-    if issue_contexts:
-        typer.echo("\n## Related Issues", err=True)
-        for ctx in issue_contexts:
-            typer.echo(f"\n### {ctx.ref.type.upper()}: {ctx.ref.id}", err=True)
-            typer.echo(f"**Title:** {ctx.title}", err=True)
-            if ctx.labels:
-                typer.echo(
-                    f"**Labels:** {', '.join(filter(None, ctx.labels))}", err=True
-                )
-            if ctx.description:
-                # Truncate long descriptions
-                desc = (
-                    ctx.description[:500] + "..."
-                    if len(ctx.description) > 500
-                    else ctx.description
-                )
-                typer.echo(f"\n{desc}", err=True)
-            if ctx.comments:
-                typer.echo(f"\n**Comments:** ({len(ctx.comments)} total)", err=True)
-                for comment in ctx.comments[:2]:
-                    truncated = comment[:200] + "..." if len(comment) > 200 else comment
-                    typer.echo(f"  - {truncated}", err=True)
-
-    if plan_content:
-        typer.echo(f"\n## Plan File: {plan_path}", err=True)
-        # Show first few lines
-        lines = plan_content.split("\n")[:10]
-        typer.echo("\n".join(lines), err=True)
-        if len(plan_content.split("\n")) > 10:
-            typer.echo("...", err=True)
-
-    if file_paths:
-        typer.echo(f"\n## Referenced Files ({len(file_paths)})", err=True)
-        for path in file_paths:
-            typer.echo(f"  - {path}", err=True)
-
-    typer.echo("\n" + "=" * 60, err=True)
-    typer.echo("STARTING CODEX REVIEW", err=True)
-    typer.echo("=" * 60 + "\n", err=True)
-
-
 def hasUncommittedChanges() -> bool:
-    """Check if there are any uncommitted changes (staged, unstaged, or untracked)."""
-    # Check for staged or unstaged changes
     result = subprocess.run(
         ["git", "status", "--porcelain"], capture_output=True, text=True
     )
     return bool(result.stdout.strip())
 
 
-def promptForCompareTarget() -> tuple[str | None, str | None]:
-    """Prompt user for commit or branch to compare against.
+def repoRoot() -> Path | None:
+    result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        return None
+    return Path(result.stdout.strip())
 
-    Returns (base_branch, commit_sha) - one will be set, other None.
-    """
+
+def gitDiff(base: str | None, commit: str | None, uncommitted: bool) -> str:
+    """Produce a unified diff for the requested source."""
+    if uncommitted:
+        staged = subprocess.run(
+            ["git", "diff", "--cached"], capture_output=True, text=True
+        ).stdout
+        unstaged = subprocess.run(
+            ["git", "diff"], capture_output=True, text=True
+        ).stdout
+        untracked_files = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        untracked = ""
+        for path in untracked_files:
+            if not path:
+                continue
+            untracked += subprocess.run(
+                ["git", "diff", "--no-index", "/dev/null", path],
+                capture_output=True,
+                text=True,
+            ).stdout
+        return "".join(
+            part for part in (staged, unstaged, untracked) if part
+        )
+
+    if commit:
+        return subprocess.run(
+            ["git", "show", commit], capture_output=True, text=True
+        ).stdout
+
+    if base:
+        return subprocess.run(
+            ["git", "diff", f"{base}...HEAD"], capture_output=True, text=True
+        ).stdout
+
+    return ""
+
+
+def changedFiles(base: str | None, commit: str | None, uncommitted: bool) -> list[str]:
+    if uncommitted:
+        staged = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        unstaged = subprocess.run(
+            ["git", "diff", "--name-only"], capture_output=True, text=True
+        ).stdout.splitlines()
+        untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        seen: dict[str, None] = {}
+        for p in staged + unstaged + untracked:
+            if p:
+                seen[p] = None
+        return list(seen.keys())
+
+    if commit:
+        return subprocess.run(
+            ["git", "show", "--name-only", "--format=", commit],
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+
+    if base:
+        return subprocess.run(
+            ["git", "diff", f"{base}...HEAD", "--name-only"],
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+
+    return []
+
+
+def promptForCompareTarget() -> tuple[str | None, str | None]:
     typer.echo("\nNo uncommitted changes found.", err=True)
     typer.echo("What would you like to review?\n", err=True)
     typer.echo("  1. Compare current branch against main", err=True)
@@ -305,17 +327,102 @@ def promptForCompareTarget() -> tuple[str | None, str | None]:
         case "1":
             return ("main", None)
         case "2":
-            branch = typer.prompt("Enter branch name to compare against")
-            return (branch, None)
+            return (typer.prompt("Enter branch name to compare against"), None)
         case "3":
-            commit_sha = typer.prompt("Enter commit SHA")
-            return (None, commit_sha)
+            return (None, typer.prompt("Enter commit SHA"))
         case _:
             raise typer.Exit(0)
 
 
+def renderIssuesMarkdown(contexts: list[IssueContext]) -> str:
+    if not contexts:
+        return "# Related Issues\n\n_No issues referenced._\n"
+
+    out = ["# Related Issues\n"]
+    for ctx in contexts:
+        out.append(f"## {ctx.ref.type.upper()}: {ctx.ref.id}")
+        out.append(f"**Title:** {ctx.title}")
+        if ctx.labels:
+            out.append(f"**Labels:** {', '.join(filter(None, ctx.labels))}")
+        if ctx.description:
+            out.append("")
+            out.append(ctx.description)
+        if ctx.comments:
+            out.append("")
+            out.append(f"**Comments ({len(ctx.comments)}):**")
+            for comment in ctx.comments:
+                out.append(f"- {comment}")
+        out.append("")
+    return "\n".join(out)
+
+
+def collectConventions(root: Path | None) -> str:
+    parts: list[str] = []
+
+    def appendFile(label: str, path: Path) -> None:
+        if path.is_file():
+            try:
+                parts.append(f"# {label}\n_{path}_\n\n{path.read_text()}\n")
+            except Exception as e:
+                parts.append(f"# {label}\n_{path}_\n\n_Failed to read: {e}_\n")
+
+    if root:
+        appendFile("Repo REVIEW.md", root / "REVIEW.md")
+        appendFile("Repo CLAUDE.md", root / "CLAUDE.md")
+
+    user_claude = Path.home() / ".claude" / "CLAUDE.md"
+    appendFile("User CLAUDE.md", user_claude)
+
+    if not parts:
+        return (
+            "# Conventions\n\n"
+            "_No REVIEW.md or CLAUDE.md found. Apply the default prompt as-is._\n"
+        )
+
+    return "\n---\n\n".join(parts)
+
+
+def latestPlanFile() -> Path | None:
+    plans_dir = Path.home() / ".claude" / "plans"
+    if not plans_dir.is_dir():
+        return None
+    candidates = [p for p in plans_dir.glob("*.md") if p.is_file()]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
+def sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def writeManifest(bundle: Path, extras: dict[str, object]) -> None:
+    files = []
+    for entry in sorted(bundle.iterdir()):
+        if entry.name == "MANIFEST.json" or not entry.is_file():
+            continue
+        files.append(
+            {
+                "path": entry.name,
+                "bytes": entry.stat().st_size,
+                "sha256": sha256(entry),
+            }
+        )
+    manifest = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "bundle_dir": str(bundle),
+        "files": files,
+        **extras,
+    }
+    (bundle / "MANIFEST.json").write_text(json.dumps(manifest, indent=2) + "\n")
+
+
 @app.command()
-def codex(
+def prepare(
     base: str = typer.Option(None, "--base", "-b", help="Compare against branch"),
     uncommitted: bool = typer.Option(
         False, "--uncommitted", "-u", help="Review staged/unstaged/untracked changes"
@@ -327,30 +434,24 @@ def codex(
         "-i",
         help="Issue refs (comma-separated): #123, PROJ-456, sentry:ID",
     ),
-    plan: str = typer.Option(None, "--plan", "-p", help="Plan file path for context"),
+    plan: str = typer.Option(None, "--plan", "-p", help="Plan file path"),
     files: str = typer.Option(
         None, "--files", "-f", help="Additional files (comma-separated)"
     ),
-    title: str = typer.Option(
-        None, "--title", "-t", help="Commit/PR title for summary"
+    title: str = typer.Option(None, "--title", "-t", help="Commit/PR title"),
+    bundle_dir: str = typer.Option(
+        None,
+        "--bundle-dir",
+        help=f"Output directory (default: {DEFAULT_BUNDLE_ROOT}/<iso>)",
     ),
-    model: str = typer.Option("gpt-5.1-codex-max", "--model", "-m", help="Codex model"),
 ):
-    """Run exhaustive code review using OpenAI Codex.
+    """Assemble a review bundle and print its absolute path.
 
-    Gathers context from GitHub/Linear/Sentry issues, plan files, and referenced
-    files, then runs codex review interactively.
-
-    By default, reviews uncommitted changes. If no uncommitted changes exist,
-    prompts for a branch or commit to compare against.
+    Writes CHANGES.diff, CHANGED_FILES.txt, ISSUES.md, PLAN.md, CONVENTIONS.md,
+    REVIEW_PROMPT.md, AGENT_CONTEXT.md (placeholder), and MANIFEST.json into a
+    fresh bundle directory. The calling agent invokes Codex MCP against the
+    bundle and writes review.json back into the same directory.
     """
-    # Check if codex is installed
-    if subprocess.run(["which", "codex"], capture_output=True).returncode != 0:
-        typer.echo("Error: codex CLI not found", err=True)
-        typer.echo("Install from: https://github.com/openai/codex", err=True)
-        raise typer.Exit(1)
-
-    # Determine diff source if not explicitly specified
     explicit_source = uncommitted or commit or base
     if not explicit_source:
         if hasUncommittedChanges():
@@ -359,7 +460,21 @@ def codex(
         else:
             base, commit = promptForCompareTarget()
 
-    # Parse and fetch issue references
+    if bundle_dir:
+        bundle = Path(bundle_dir).expanduser().resolve()
+    else:
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        bundle = DEFAULT_BUNDLE_ROOT / stamp
+    bundle.mkdir(parents=True, exist_ok=True)
+
+    diff_text = gitDiff(base, commit, uncommitted)
+    (bundle / "CHANGES.diff").write_text(diff_text)
+
+    file_list = changedFiles(base, commit, uncommitted)
+    (bundle / "CHANGED_FILES.txt").write_text(
+        "\n".join(file_list) + ("\n" if file_list else "")
+    )
+
     issue_contexts: list[IssueContext] = []
     if issues:
         for ref_str in issues.split(","):
@@ -372,144 +487,97 @@ def codex(
                 typer.echo(
                     f"Warning: Could not parse issue reference: {ref_str}", err=True
                 )
+    (bundle / "ISSUES.md").write_text(renderIssuesMarkdown(issue_contexts))
 
-    # Read plan file
-    plan_content = None
+    plan_path: Path | None = None
     if plan:
-        plan_path = Path(plan)
-        if plan_path.exists():
-            plan_content = plan_path.read_text()
+        candidate = Path(plan).expanduser()
+        if candidate.is_file():
+            plan_path = candidate
         else:
             typer.echo(f"Warning: Plan file not found: {plan}", err=True)
+    if plan_path is None:
+        plan_path = latestPlanFile()
 
-    # Collect file paths (don't read content, just validate existence)
-    file_paths = []
+    if plan_path:
+        try:
+            plan_body = plan_path.read_text()
+        except Exception as e:
+            plan_body = f"_Failed to read {plan_path}: {e}_"
+        (bundle / "PLAN.md").write_text(
+            f"# Plan\n_{plan_path}_\n\n{plan_body}\n"
+        )
+    else:
+        (bundle / "PLAN.md").write_text("# Plan\n\n_No plan file found._\n")
+
+    root = repoRoot()
+    (bundle / "CONVENTIONS.md").write_text(collectConventions(root))
+
+    referenced: list[str] = []
     if files:
         for path in files.split(","):
-            p = Path(path.strip())
-            if p.exists() and p.is_file():
-                file_paths.append(str(p))
+            p = Path(path.strip()).expanduser()
+            if p.is_file():
+                referenced.append(str(p))
             else:
                 typer.echo(f"Warning: File not found: {path}", err=True)
-
-    # Print gathered context
-    printContext(issue_contexts, plan, plan_content, file_paths)
-
-    # Build codex command
-    cmd = ["codex", "review"]
-
-    # Diff source (mutually exclusive)
-    if uncommitted:
-        cmd.append("--uncommitted")
-    elif commit:
-        cmd.extend(["--commit", commit])
-    elif base:
-        cmd.extend(["--base", base])
+    refs_body = "# Additional Referenced Files\n\n"
+    if referenced:
+        for fp in referenced:
+            try:
+                content = Path(fp).read_text()
+            except Exception as e:
+                content = f"_Failed to read: {e}_"
+            refs_body += f"## {fp}\n\n```\n{content}\n```\n\n"
     else:
-        # Should not reach here, but default to main if somehow no source
-        cmd.extend(["--base", "main"])
+        refs_body += "_No additional files referenced._\n"
+    (bundle / "REFERENCED_FILES.md").write_text(refs_body)
 
-    # Model override
-    cmd.extend(["-c", f'model="{model}"'])
+    agent_context_path = bundle / "AGENT_CONTEXT.md"
+    if not agent_context_path.exists():
+        agent_context_path.write_text(
+            "# Agent Context\n\n"
+            "_The calling agent should overwrite this file with:_\n"
+            "_- Original user request / prompts_\n"
+            "_- Any user feedback or course corrections_\n"
+            "_- Plan iteration or decisions made during the work_\n"
+            "_- Task summary_\n\n"
+            "_Placeholder written by scripts/review prepare._\n"
+        )
 
-    # Optional title
-    if title:
-        cmd.extend(["--title", title])
+    prompt_src = SKILL_DIR / "REVIEW_PROMPT.md"
+    if prompt_src.is_file():
+        shutil.copy2(prompt_src, bundle / "REVIEW_PROMPT.md")
+    else:
+        (bundle / "REVIEW_PROMPT.md").write_text(
+            "# REVIEW_PROMPT.md missing — check skill install.\n"
+        )
 
-    # Execute codex (replaces this process)
-    os.execvp("codex", cmd)
-
-
-@app.command()
-def context(
-    issues: str = typer.Option(
-        None, "--issues", "-i", help="Issue refs (comma-separated)"
-    ),
-    plan: str = typer.Option(None, "--plan", "-p", help="Plan file path"),
-    files: str = typer.Option(
-        None, "--files", "-f", help="Additional files (comma-separated)"
-    ),
-    output: str = typer.Option(
-        "markdown", "--output", "-o", help="Output format: json|markdown"
-    ),
-):
-    """Gather and display context without running review.
-
-    Useful for debugging or preparing context separately.
-    """
-    # Parse and fetch issue references
-    issue_contexts: list[IssueContext] = []
-    if issues:
-        for ref_str in issues.split(","):
-            ref = parseIssueRef(ref_str.strip())
-            if ref:
-                typer.echo(f"Fetching {ref.type} issue {ref.id}...", err=True)
-                if ctx := fetchIssue(ref):
-                    issue_contexts.append(ctx)
-
-    # Read plan file
-    plan_content = None
-    if plan:
-        plan_path = Path(plan)
-        if plan_path.exists():
-            plan_content = plan_path.read_text()
-
-    # Collect file paths and contents
-    file_contents = {}
-    if files:
-        for path in files.split(","):
-            p = Path(path.strip())
-            if p.exists() and p.is_file():
-                try:
-                    file_contents[str(p)] = p.read_text()
-                except Exception:
-                    pass
-
-    if output == "json":
-        data = {
+    writeManifest(
+        bundle,
+        extras={
+            "title": title,
+            "source": {
+                "uncommitted": bool(uncommitted),
+                "base": base,
+                "commit": commit,
+            },
             "issues": [
-                {
-                    "type": ctx.ref.type,
-                    "id": ctx.ref.id,
-                    "repo": ctx.ref.repo,
-                    "title": ctx.title,
-                    "description": ctx.description,
-                    "labels": ctx.labels,
-                    "comments": ctx.comments,
-                }
-                for ctx in issue_contexts
+                {"type": c.ref.type, "id": c.ref.id, "repo": c.ref.repo}
+                for c in issue_contexts
             ],
-            "plan": {"path": plan, "content": plan_content} if plan_content else None,
-            "files": [{"path": p, "content": c} for p, c in file_contents.items()],
-        }
-        typer.echo(json.dumps(data, indent=2))
-    else:
-        # Markdown output
-        if issue_contexts:
-            typer.echo("# Related Issues\n")
-            for ctx in issue_contexts:
-                typer.echo(f"## {ctx.ref.type.upper()}: {ctx.ref.id}")
-                typer.echo(f"**Title:** {ctx.title}")
-                if ctx.labels:
-                    typer.echo(f"**Labels:** {', '.join(filter(None, ctx.labels))}")
-                typer.echo(f"\n{ctx.description}\n")
-                if ctx.comments:
-                    typer.echo("**Comments:**")
-                    for comment in ctx.comments[:5]:
-                        typer.echo(f"- {comment[:300]}...")
-                typer.echo()
+            "plan_file": str(plan_path) if plan_path else None,
+            "repo_root": str(root) if root else None,
+        },
+    )
 
-        if plan_content:
-            typer.echo(f"# Plan: {plan}\n")
-            typer.echo(plan_content)
-            typer.echo()
+    typer.echo("", err=True)
+    typer.echo(f"Bundle ready: {bundle}", err=True)
+    typer.echo(f"  diff: {len(diff_text)} bytes, {len(file_list)} files", err=True)
+    typer.echo(f"  issues: {len(issue_contexts)}", err=True)
+    typer.echo(f"  plan: {plan_path if plan_path else '(none)'}", err=True)
 
-        if file_contents:
-            typer.echo("# Referenced Files\n")
-            for path, content in file_contents.items():
-                typer.echo(f"## {path}")
-                typer.echo(f"```\n{content[:2000]}\n```")
-                typer.echo()
+    sys.stdout.write(str(bundle) + "\n")
 
 
 if __name__ == "__main__":
