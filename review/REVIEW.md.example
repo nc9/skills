@@ -1,0 +1,33 @@
+# REVIEW.md — house conventions for code review
+
+Drop this file at the root of a repo to customize how the `review` skill reviews
+changes there. Gets concatenated into `CONVENTIONS.md` in every review bundle
+and is treated as the highest-priority instruction set, overriding the generic
+prompt where they conflict.
+
+## Skip paths
+
+Do not review changes under these paths:
+
+- `dist/`, `build/`, `coverage/`
+- `*.generated.ts`, `*.pb.go`
+- `vendor/`, `node_modules/`, lockfiles
+
+## Caps
+
+- Max 3 nit-severity findings total (override default of 5).
+- Do not flag missing tests for files under `scripts/`.
+
+## Mandatory checks
+
+- All HTTP handlers must validate input at the boundary — flag any new handler
+  that reads `req.body` / query params without a schema check.
+- Any new SQL string must be parameterized — flag any string concatenation or
+  template interpolation into a query.
+- New environment variable reads must have a default or fail fast at startup —
+  flag `process.env.X` used without either.
+
+## Tone
+
+- Be terse. One sentence per `description` unless genuinely more is needed.
+- Skip "consider" / "might want to" — state the issue directly.
