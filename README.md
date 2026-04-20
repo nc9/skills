@@ -123,7 +123,7 @@ npx skills add https://github.com/nc9/skills/tree/main/generate-image
 | Skill | Description | API |
 |---|---|---|
 | [commit](./commit/) | Pre-commit workflow — test, lint, format, type-check, atomic commits | None (local) |
-| [review](./review/) | Exhaustive AI code review via OpenAI Codex, with GitHub/Linear/Sentry context | [OpenAI](https://platform.openai.com/) |
+| [review](./review/) | Structured code review via OpenAI Codex MCP — 0-5 score, prioritized issues with file:line citations, verification pass; context from GitHub/Linear/Sentry + plans + conversation | [OpenAI](https://platform.openai.com/) (Codex MCP or CLI) |
 | [web-ui](./web-ui/) | Principles for building great web app interfaces | None (local) |
 
 ## Configuration
