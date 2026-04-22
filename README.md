@@ -1,8 +1,8 @@
-# Claude Code Skills
+# Agent Skills
 
-My collection of [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skills — agent-invoked tools for specialized tasks like image generation, SEO, research, and content work.
+Portable [agent skills](https://agentskills.io/specification) for specialized tasks — image generation, SEO, research, content, engineering workflow. Works with any skills-compatible coding agent: Claude Code, OpenAI Codex, Cursor, Windsurf, opencode, and others.
 
-Skills extend Claude Code automatically based on context. Describe what you need; Claude picks the right skill.
+Skills extend your agent automatically based on context. Describe what you need; the agent picks the right skill.
 
 ## Prerequisites
 
@@ -51,10 +51,19 @@ npx skills add nc9/skills --skill generate-image --skill remove-background --ski
 npx skills add nc9/skills --skill generate-image -g
 ```
 
+### Target specific agents
+
+`npx skills` auto-detects installed agents, or use `-a` to pick explicitly:
+
+```bash
+# Claude Code + Codex + Cursor in one shot
+npx skills add nc9/skills --skill generate-image -a claude-code -a codex -a cursor
+```
+
 ### Install everything, non-interactively (CI/CD)
 
 ```bash
-npx skills add nc9/skills --all -g -a claude-code -y
+npx skills add nc9/skills --all -g -y
 ```
 
 ### Other useful commands
@@ -167,10 +176,10 @@ After install, describe what you need:
 - "Write a blog post about WebGPU, humanize the output"
 - "Review my changes before I commit"
 
-Claude picks the right skill automatically.
+The agent picks the right skill automatically.
 
 ## Links
 
-- [Claude Code Documentation](https://docs.anthropic.com/en/docs/claude-code)
-- [`npx skills` installer](https://github.com/vercel-labs/skills)
 - [Skills Specification](https://agentskills.io/specification)
+- [`npx skills` installer](https://github.com/vercel-labs/skills)
+- Agents: [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex](https://platform.openai.com/docs/codex), [Cursor](https://docs.cursor.com/), [opencode](https://opencode.ai/), [Windsurf](https://windsurf.com/)
