@@ -6,3 +6,4 @@ CLAUDE.md
 __pycache__
 .claude/
 seo-audit/
+generate-image/tests/

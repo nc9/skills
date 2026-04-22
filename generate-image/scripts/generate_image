@@ -5,12 +5,15 @@
 #     "requests",
 #     "python-dotenv",
 #     "typer",
+#     "openai>=2.0.0",
 # ]
 # ///
 """
 Generate Image Skill
 
-Generate and edit images using OpenRouter API with Gemini 3.1 Flash (Nano Banana 2).
+Generate and edit images. Routes by model:
+- gpt-image-* / openai/* -> OpenAI SDK direct (supports non-square size + quality)
+- google/gemini-* -> OpenRouter chat-completions (supports aspect ratios + size tiers)
 """
 
 from __future__ import annotations
@@ -24,15 +27,18 @@ from typing import Annotated
 import requests
 import typer
 from dotenv import load_dotenv
+from openai import OpenAI
 
 load_dotenv()
 
-app = typer.Typer(help="Generate and edit images using OpenRouter API")
-
 # --- Config ---
 
-DEFAULT_MODEL = "google/gemini-3.1-flash-image-preview"
+DEFAULT_MODEL = "gpt-image-2"
+GEMINI_MODEL = "google/gemini-3.1-flash-image-preview"
 DEFAULT_OUTPUT = "generated_image.png"
+
+PORTRAIT_RATIOS = {"9:16", "2:3", "3:4", "4:5", "1:4", "1:8"}
+LANDSCAPE_RATIOS = {"16:9", "3:2", "4:3", "5:4", "21:9", "4:1", "8:1"}
 
 MIME_TYPES = {
     ".png": "image/png",
@@ -91,20 +97,53 @@ def saveBase64Image(base64_data: str, output_path: Path) -> None:
         f.write(image_data)
 
 
-def getApiKey(api_key: str | None = None) -> str:
-    """Get API key from argument or environment."""
-    key = api_key or os.getenv("OPENROUTER_API_KEY")
+def isOpenAI(model: str) -> bool:
+    """True when the model should be called via the OpenAI SDK directly."""
+    return model.startswith("openai/") or model.startswith("gpt-image")
 
+
+def openAIModelId(model: str) -> str:
+    """Strip any OpenRouter-style `openai/` prefix for the OpenAI SDK."""
+    return model.removeprefix("openai/")
+
+
+def getApiKey(model: str, api_key: str | None = None) -> str:
+    """Resolve the right key for the route. OpenAI SDK -> OPENAI_API_KEY; else OPENROUTER_API_KEY."""
+    if isOpenAI(model):
+        key = api_key or os.getenv("OPENAI_API_KEY")
+        if not key:
+            typer.echo("Error: OPENAI_API_KEY not found", err=True)
+            typer.echo("\nSet in .env file, export, or source ~/.secrets:", err=True)
+            typer.echo("  OPENAI_API_KEY=your-api-key-here", err=True)
+            typer.echo("\nGet key: https://platform.openai.com/api-keys", err=True)
+            raise typer.Exit(1)
+        return key
+
+    key = api_key or os.getenv("OPENROUTER_API_KEY")
     if not key:
         typer.echo("Error: OPENROUTER_API_KEY not found", err=True)
-        typer.echo("\nSet in .env file:", err=True)
+        typer.echo("\nSet in .env file or export:", err=True)
         typer.echo("  OPENROUTER_API_KEY=your-api-key-here", err=True)
-        typer.echo("\nOr export:", err=True)
-        typer.echo("  export OPENROUTER_API_KEY=your-api-key-here", err=True)
         typer.echo("\nGet key: https://openrouter.ai/keys", err=True)
         raise typer.Exit(1)
-
     return key
+
+
+def resolveOpenAISize(size: str | None, aspect_ratio: str | None) -> str:
+    """Map --size / --aspect-ratio to an OpenAI Images API size string."""
+    if size:
+        s = size.lower()
+        if s == "auto":
+            return "auto"
+        if "x" in s:
+            return s  # e.g. "1024x1536"
+        # Gemini tier (1K/2K/4K) → ignore for OpenAI
+    if aspect_ratio:
+        if aspect_ratio in PORTRAIT_RATIOS:
+            return "1024x1536"
+        if aspect_ratio in LANDSCAPE_RATIOS:
+            return "1536x1024"
+    return "1024x1024"
 
 
 def generateImage(
@@ -118,13 +157,101 @@ def generateImage(
     seed: int | None = None,
     temperature: float | None = None,
     reasoning: str | None = None,
+    model: str = DEFAULT_MODEL,
+    quality: str | None = None,
+    output_format: str | None = None,
 ) -> dict:
-    """Generate or edit an image using OpenRouter API."""
+    """Dispatch to the OpenAI SDK or OpenRouter chat-completions based on model."""
+    if isOpenAI(model):
+        return generateImageOpenAI(
+            prompt,
+            output_path,
+            api_key,
+            input_image,
+            aspect_ratio,
+            image_size,
+            model,
+            quality,
+            output_format,
+        )
+    return generateImageOpenRouter(
+        prompt,
+        output_path,
+        api_key,
+        input_image,
+        aspect_ratio,
+        max_tokens,
+        image_size,
+        seed,
+        temperature,
+        reasoning,
+        model,
+    )
+
+
+def generateImageOpenAI(
+    prompt: str,
+    output_path: Path,
+    api_key: str,
+    input_image: Path | None,
+    aspect_ratio: str | None,
+    image_size: str | None,
+    model: str,
+    quality: str | None,
+    output_format: str | None,
+) -> dict:
+    """Generate or edit an image via the OpenAI Images API (SDK direct)."""
+    model_id = openAIModelId(model)
+    size = resolveOpenAISize(image_size, aspect_ratio)
+    fmt = (output_format or output_path.suffix.lstrip(".") or "png").lower()
+    if fmt == "jpg":
+        fmt = "jpeg"
+
+    client = OpenAI(api_key=api_key)
+    kwargs: dict = {"model": model_id, "prompt": prompt, "size": size}
+    if quality:
+        kwargs["quality"] = quality
+    if fmt in {"png", "jpeg", "webp"}:
+        kwargs["output_format"] = fmt
+
+    if input_image is not None:
+        typer.echo(f"Editing: {input_image}", err=True)
+        typer.echo(f"Model: {model_id} (OpenAI SDK, size={size})", err=True)
+        with open(input_image, "rb") as f:
+            response = client.images.edit(image=f, **kwargs)
+    else:
+        typer.echo(f"Generating: {prompt[:50]}...", err=True)
+        typer.echo(f"Model: {model_id} (OpenAI SDK, size={size})", err=True)
+        response = client.images.generate(**kwargs)
+
+    b64 = response.data[0].b64_json
+    if not b64:
+        typer.echo("Error: OpenAI response missing b64_json", err=True)
+        raise typer.Exit(1)
+    saveBase64Image(b64, output_path)
+    typer.echo(f"Saved: {output_path}", err=True)
+    return {"model": model_id, "size": size, "output": str(output_path)}
+
+
+def generateImageOpenRouter(
+    prompt: str,
+    output_path: Path,
+    api_key: str,
+    input_image: Path | None = None,
+    aspect_ratio: str | None = None,
+    max_tokens: int = 1024,
+    image_size: str | None = None,
+    seed: int | None = None,
+    temperature: float | None = None,
+    reasoning: str | None = None,
+    model: str = GEMINI_MODEL,
+) -> dict:
+    """Generate or edit an image via OpenRouter chat-completions (Gemini + friends)."""
     is_editing = input_image is not None
 
     if is_editing:
         typer.echo(f"Editing: {input_image}", err=True)
-        typer.echo(f"Model: {DEFAULT_MODEL}", err=True)
+        typer.echo(f"Model: {model}", err=True)
         image_data_url = loadImageAsBase64(input_image)
         message_content = [
             {"type": "text", "text": prompt},
@@ -132,16 +259,17 @@ def generateImage(
         ]
     else:
         typer.echo(f"Generating: {prompt[:50]}...", err=True)
-        typer.echo(f"Model: {DEFAULT_MODEL}", err=True)
+        typer.echo(f"Model: {model}", err=True)
         message_content = prompt
 
     request_body = {
-        "model": DEFAULT_MODEL,
+        "model": model,
         "messages": [{"role": "user", "content": message_content}],
         "modalities": ["image", "text"],
         "max_tokens": max_tokens,
     }
 
+    # image_config (aspect_ratio, image_size 0.5K/1K/2K/4K) is Gemini-specific.
     image_config = {}
     if aspect_ratio:
         image_config["aspect_ratio"] = aspect_ratio
@@ -214,11 +342,10 @@ def extractImages(message: dict) -> list[dict]:
     return images
 
 
-# --- Commands ---
+# --- CLI ---
 
 
-@app.command()
-def generate(
+def main(
     prompt: Annotated[
         str, typer.Argument(help="Image description or editing instructions")
     ],
@@ -233,7 +360,7 @@ def generate(
         typer.Option(
             "--aspect-ratio",
             "-a",
-            help="Aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3)",
+            help="Aspect ratio: 1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3, 4:5, 5:4, 21:9, 1:4, 4:1, 1:8, 8:1",
         ),
     ] = None,
     max_tokens: Annotated[
@@ -241,14 +368,29 @@ def generate(
         typer.Option(
             "--max-tokens",
             "-t",
-            help="Max output tokens (higher = more detail, default 1024)",
+            help="Max output tokens for OpenRouter models (higher = more detail, default 1024)",
         ),
     ] = 1024,
     image_size: Annotated[
         str | None,
         typer.Option(
             "--size",
-            help="Image resolution (0.5K, 1K, 2K, 4K). Default: 1K",
+            help="Size. Gemini: 0.5K/1K/2K/4K. gpt-image-*: 1024x1024/1024x1536/1536x1024/auto",
+        ),
+    ] = None,
+    quality: Annotated[
+        str | None,
+        typer.Option(
+            "--quality",
+            "-q",
+            help="Quality tier for gpt-image-*: auto, low, medium, high",
+        ),
+    ] = None,
+    output_format: Annotated[
+        str | None,
+        typer.Option(
+            "--format",
+            help="Output format for gpt-image-*: png (default), jpeg, webp",
         ),
     ] = None,
     seed: Annotated[
@@ -267,12 +409,20 @@ def generate(
             help="Reasoning effort for complex prompts (minimal, high)",
         ),
     ] = None,
+    model: Annotated[
+        str,
+        typer.Option(
+            "--model",
+            "-m",
+            help=f"Model id (default: {DEFAULT_MODEL}). Use google/gemini-3.1-flash-image-preview for Gemini.",
+        ),
+    ] = DEFAULT_MODEL,
     api_key: Annotated[
-        str | None, typer.Option("--api-key", help="OpenRouter API key")
+        str | None, typer.Option("--api-key", help="API key override")
     ] = None,
 ) -> None:
-    """Generate or edit an image."""
-    key = getApiKey(api_key)
+    """Generate or edit images. Routes by model to OpenAI SDK or OpenRouter."""
+    key = getApiKey(model, api_key)
     generateImage(
         prompt,
         output,
@@ -284,80 +434,11 @@ def generate(
         seed,
         temperature,
         reasoning,
+        model,
+        quality,
+        output_format,
     )
 
 
-@app.callback(invoke_without_command=True)
-def main(
-    ctx: typer.Context,
-    prompt: Annotated[str | None, typer.Argument(help="Image description")] = None,
-    output: Annotated[
-        Path, typer.Option("--output", "-o", help="Output file path")
-    ] = Path(DEFAULT_OUTPUT),
-    input: Annotated[
-        Path | None, typer.Option("--input", "-i", help="Input image for editing")
-    ] = None,
-    aspect_ratio: Annotated[
-        str | None,
-        typer.Option(
-            "--aspect-ratio",
-            "-a",
-            help="Aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3)",
-        ),
-    ] = None,
-    max_tokens: Annotated[
-        int,
-        typer.Option(
-            "--max-tokens",
-            "-t",
-            help="Max output tokens (higher = more detail, default 1024)",
-        ),
-    ] = 1024,
-    image_size: Annotated[
-        str | None,
-        typer.Option(
-            "--size",
-            help="Image resolution (0.5K, 1K, 2K, 4K). Default: 1K",
-        ),
-    ] = None,
-    seed: Annotated[
-        int | None,
-        typer.Option("--seed", "-s", help="Seed for reproducible generation"),
-    ] = None,
-    temperature: Annotated[
-        float | None,
-        typer.Option("--temperature", "--temp", help="Creativity (0.0-2.0)"),
-    ] = None,
-    reasoning: Annotated[
-        str | None,
-        typer.Option(
-            "--reasoning",
-            "-r",
-            help="Reasoning effort for complex prompts (minimal, high)",
-        ),
-    ] = None,
-    api_key: Annotated[
-        str | None, typer.Option("--api-key", help="OpenRouter API key")
-    ] = None,
-) -> None:
-    """Generate or edit images using OpenRouter API."""
-    if ctx.invoked_subcommand is None and prompt:
-        key = getApiKey(api_key)
-        generateImage(
-            prompt,
-            output,
-            key,
-            input,
-            aspect_ratio,
-            max_tokens,
-            image_size,
-            seed,
-            temperature,
-            reasoning,
-        )
-    elif ctx.invoked_subcommand is None:
-        typer.echo(ctx.get_help())
-
-
 if __name__ == "__main__":
-    app()
+    typer.run(main)
