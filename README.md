@@ -178,6 +178,17 @@ After install, describe what you need:
 
 The agent picks the right skill automatically.
 
+## Development
+
+Cloning this repo to hack on skills? Use the Makefile instead of `npx skills` — it symlinks every skill with a `SKILL.md` into `~/.agents/skills/` (generic) and `~/.claude/skills/` (Claude Code), so edits are picked up live with no reinstall:
+
+```bash
+git clone https://github.com/nc9/skills.git && cd skills
+make link
+```
+
+The target auto-discovers skills via `find`, so new skills are linked automatically on the next `make link`. To add a new skill, create a directory with a `SKILL.md` manifest (see the [spec](https://agentskills.io/specification)) and run `make link` again.
+
 ## Links
 
 - [Skills Specification](https://agentskills.io/specification)
