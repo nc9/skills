@@ -306,6 +306,171 @@ The Maps Embed API is **free, no quota** (unlike other Maps APIs). Steps:
 3. Store as `PUBLIC_GOOGLE_MAPS_EMBED_KEY` (PUBLIC_ prefix → exposed at Astro build time). Add to `.env.local` for build, and as a plain var on Pages for future git-builds.
 4. Save `placeId` per office in `src/config/site.ts`.
 
+## Analytics — GA4 + auto-tracked conversions
+
+Drop a small `<Analytics>` component into `Base.astro <head>` that emits both the gtag loader and a single delegated click listener. No per-link `onclick` attributes anywhere.
+
+```astro
+<!-- src/components/Analytics.astro -->
+{gaId && (
+  <>
+    <script async src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`}></script>
+    <script is:inline define:vars={{ gaId }}>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){ dataLayer.push(arguments); }
+      window.gtag = gtag;
+      gtag("js", new Date());
+      gtag("config", gaId, { send_page_view: true });
+      // Delegated listener: covers every <a> click site-wide, even mobile-nav links
+      document.addEventListener("click", function (e) {
+        let el = e.target;
+        while (el && el !== document.body && el.tagName !== "A") el = el.parentNode;
+        if (!el || el.tagName !== "A") return;
+        const href = el.getAttribute("href") || "";
+        const section = el.closest("header") ? "header" : el.closest("footer") ? "footer" : "body";
+        const label = (el.textContent || "").trim().slice(0, 80);
+        if (href.startsWith("tel:"))      gtag("event", "phone_click",    { phone_number: href.slice(4), link_text: label, section });
+        else if (href.startsWith("mailto:")) gtag("event", "email_click", { email_address: href.slice(7), link_text: label, section });
+        else if (/\/contact(\/|$|#)/.test(href)) gtag("event", "cta_click", { cta_type: "free_consultation", link_text: label, section, link_url: href });
+        else if (/^https?:\/\//.test(href)) {
+          try { const u = new URL(href); if (u.hostname !== location.hostname)
+            gtag("event", "outbound_click", { outbound_url: href, outbound_domain: u.hostname, link_text: label, section });
+          } catch {}
+        }
+      }, true);
+    </script>
+  </>
+)}
+```
+
+Contact form fires `contact_form_submit` from the React component's success branch:
+```ts
+(window as any).gtag?.("event", "contact_form_submit", { form_id: "contact", page_path: location.pathname });
+```
+
+CSP additions:
+- `script-src` + `https://www.googletagmanager.com`
+- `connect-src` + `https://www.google-analytics.com https://*.analytics.google.com`
+- `img-src` + the same
+
+**Tell the client** to mark each event as a Key Event in GA4 (Admin → Events → Mark as key event) **after** the event fires the first time. The toggle isn't available until then.
+
+## Live data on a static site (KV + Pages Function + client refresher)
+
+When the client needs numbers that update without redeploys (Google reviews, inventory counts, status indicators), use stale-while-revalidate via a single Pages Function. **No separate Worker, no cron job, no scheduled handler.**
+
+1. **KV namespace** — `wrangler kv namespace create REVIEWS_CACHE`; bind in `wrangler.jsonc`:
+   ```jsonc
+   "kv_namespaces": [{ "binding": "REVIEWS_CACHE", "id": "..." }]
+   ```
+2. **Function** at `functions/api/reviews.ts` (note: no `.json` extension — see [Pages Function naming gotcha](./LESSONS.md)):
+   - GET handler reads `env.REVIEWS_CACHE.get("v1")`
+   - Parses `fetched_at`; if `Date.now() - parsed > TTL_MS` (e.g. 1 hour), call `ctx.waitUntil(refresh())` and return the cached payload immediately
+   - On cache miss with no value, refresh synchronously so the first request gets real data
+   - Set response cache headers: `cache-control: public, max-age=300, stale-while-revalidate=3600`
+3. **Upstream call** — fetch the source-of-truth API (Google Places API New for reviews) using a secret env var:
+   ```bash
+   echo -n "AIza..." | wrangler pages secret put GOOGLE_PLACES_API_KEY --project-name=<proj>
+   ```
+4. **Client refresher** — a tiny inline `<script is:inline>` in Base layout that fetches `/api/reviews` on every page load and updates `[data-place-id]` and `[data-review-badge="total"]` elements via `setText` helpers. Server-side initial paint uses placeholder values from `site.ts` so the page is correct from byte 1, and updates if the API has newer data.
+
+Cost analysis (Google Places API New as example): at 1h TTL × 2 places × 24h × 30 days = 1,440 calls/month. Free tier is 5,000/month for Place Details. Effectively free.
+
+## Custom 404
+
+Create `src/pages/404.astro` reusing the `Base` layout + Kicker/Button. Astro emits `dist/404.html` and Cloudflare Pages auto-serves it with HTTP 404 status for unmatched routes. **Without this file**, CF Pages falls through to `index.html` and returns HTTP 200 with the homepage for unknown URLs — bad for SEO and confusing for users.
+
+Add a card grid linking to the major sections so users can self-recover.
+
+## Brand kit — use the real assets from day one
+
+Don't ad-hoc invent logo marks. Ask the client for the brand kit (usually a folder with `Logomark/`, `Full Logo/`, `01 Colour/`, `02 Black and White/` subdirs containing SVG, PNG, EPS variants). Standard set you'll need in `public/images/brand/`:
+
+```
+karnib-logomark-navy.svg     # small mark, light bg
+karnib-logomark-white.svg    # small mark, dark bg
+karnib-logomark-cream.svg    # small mark, off-white/cream variant
+karnib-fulllogo-navy-horizontal.svg
+karnib-fulllogo-white-horizontal.svg
+```
+
+If the project doesn't have a brand kit yet, isolate the placeholder mark in **one** `<BrandMark>` component used everywhere — then the eventual swap is a single-file edit.
+
+### Favicon set (full modern)
+
+Generate from a single 512×512 transparent-bg PNG of the logomark:
+
+```bash
+SRC=assets/favicon-512.png
+magick "$SRC" -define icon:auto-resize=16,32,48 public/favicon.ico
+magick "$SRC" -resize 32x32   public/favicon-32.png
+magick "$SRC" -resize 96x96   public/favicon-96.png
+magick "$SRC" -resize 180x180 public/apple-touch-icon.png
+magick "$SRC" -resize 192x192 public/icon-192.png
+magick "$SRC" -resize 512x512 public/icon-512.png
+cp brand-kit/Logomark.svg public/favicon.svg
+```
+
+Then in `Base.astro` `<head>`:
+
+```html
+<link rel="icon" href="/favicon.ico" sizes="any" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="96x96" href="/favicon-96.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+<link rel="manifest" href="/site.webmanifest" />
+```
+
+Plus a minimal `public/site.webmanifest`:
+```json
+{
+  "name": "...", "short_name": "...",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "theme_color": "#...", "background_color": "#...", "display": "browser"
+}
+```
+
+**Tell the client to hard-refresh** (Cmd-Shift-R) after deploying — favicons are aggressively cached.
+
+## Google Maps API keys — two, not one
+
+Provision two keys, not one:
+
+| Key | Use | Restriction | Stored as |
+|---|---|---|---|
+| `<project>-embed` | Map embeds in browser HTML | HTTP referrers (`site.com/*`, `*.pages.dev/*`, `localhost/*`); API restrictions: Maps Embed API only | `PUBLIC_GOOGLE_MAPS_EMBED_KEY` env var (visible in HTML — safe because referrer-locked) |
+| `<project>-server` | Places API / Geocoding from Pages Functions | None (or strict IP if available); API restrictions: only the APIs you actually call (Places API New) | Pages **secret** via `wrangler pages secret put` |
+
+CF Workers don't carry a referrer header, so a referrer-restricted key fails or fails-open from a Worker. Different products, different keys.
+
+## OG card via headless Chrome
+
+Build the OG card as an HTML page in `scripts/og-card.html`, then screenshot via headless Chrome (no Playwright needed):
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --headless=new --hide-scrollbars --disable-gpu \
+  --window-size=1200,630 --force-device-scale-factor=2 \
+  --screenshot=/tmp/og.png \
+  --virtual-time-budget=4000 \
+  "http://localhost:3000/og-card.html"
+magick /tmp/og.png -resize 1200x630 -quality 88 public/images/og/<site>-og.jpg
+```
+
+`--force-device-scale-factor=2` captures at 2400×1260 for sharp text at the final 1200×630. The HTML lives in version control so you can iterate on the design like any other component.
+
+## Schema migrations across MDX content
+
+When renaming or restructuring a content collection schema field (e.g. `location: string` → `locations: string[]`), the consumers won't fail the build — they'll just render `undefined`. Always:
+
+1. **Grep first**: `grep -rn "data\.<oldFieldName>\b" src/`
+2. Update the schema + every MDX file + every consumer in a single commit.
+3. `bun run build` — schema validation will flag any MDX file you missed.
+
 ## SEO refinement loop (after launch)
 
 This is half the job — the audit + GSC + Maps profile loop is where rankings actually come from.

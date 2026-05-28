@@ -9,6 +9,114 @@ Format: **YYYY-MM-DD — Short title**
 
 ---
 
+## 2026-05-28 — Live data on a static site: KV + Pages Function + client refresher (no separate Worker needed)
+
+- **What happened:** Client wanted Google review counts (per office + aggregate) to stay fresh without a redeploy. First instinct: spin up a separate Cloudflare Worker with a cron trigger to write to KV, then have Pages Functions read it. Way over-engineered for a value that only needs to be hours-fresh. Ended up implementing entirely inside a single Pages Function with stale-while-revalidate. No Worker, no cron job, no Wrangler scheduled events config.
+- **Why:** Cloudflare Pages Functions don't support `scheduled` handlers natively, but you can sidestep cron entirely by refreshing **on read** in the background. The first request after the cache goes stale triggers a `ctx.waitUntil(refresh)` and immediately returns the stale value; the user sees no latency, the next user sees fresh data. Edge cache (`max-age=300, stale-while-revalidate=3600`) further smooths it.
+- **How to apply next time:**
+  1. Create KV namespace: `wrangler kv namespace create <NAME>` (new syntax; `kv:namespace` is deprecated). Copy the `id` into `wrangler.jsonc` `kv_namespaces`.
+  2. Pages Function reads `env.<BINDING>.get(KEY)`. If `Date.now() - parse(fetched_at) > TTL_MS`, call `ctx.waitUntil(refresh())`. Always return the cached value (or block on refresh if there's nothing cached yet).
+  3. Set the upstream API key as a **secret** (`wrangler pages secret put`), not a var, so it doesn't leak in `wrangler.jsonc`.
+  4. Client side: `<ReviewsRefresher>` inline `<script>` in Base layout fetches the JSON on every page load and updates the DOM. Server-render initial values from config so the initial paint is correct.
+  5. Cost: at TTL=1h with ~2 upstream calls per place per refresh, ~1,500/month — well inside Google Places API (New) free tier (5,000/mo for Place Details).
+
+## 2026-05-28 — Pages Function names: don't use `.json` (or any static extension) in the path
+
+- **What happened:** Created `functions/api/reviews.json.ts` to route GET `/api/reviews.json`. CF Pages returned the homepage HTML — the Function never matched.
+- **Why:** Pages does static-asset lookup first. A URL ending in `.json` triggers a static-file resolution attempt; when no `dist/api/reviews.json` exists, the request falls through to the SPA fallback (`/index.html`) rather than to the Function. The Function matches by full path including extension, but the static-lookup short-circuit gets there first.
+- **How to apply next time:** Name your Function file with no extra extension before `.ts`. Use `functions/api/reviews.ts` → route `/api/reviews`, then set `content-type: application/json` in the response. Same trade-off for `.xml`, `.txt`, etc.
+
+## 2026-05-28 — Two Google Maps API keys, not one
+
+- **What happened:** Tried to reuse the existing `PUBLIC_GOOGLE_MAPS_EMBED_KEY` (HTTP referrer-restricted) for server-side Places API calls from the Pages Function. The Places call wouldn't have a referrer header at all (Workers don't carry one), so the restriction would either fail open (defeating the point) or fail closed (breaking the call). Either way it's wrong.
+- **Why:** Map embed iframes load from the user's browser → key in HTML → only safe if referrer-restricted. Places API calls happen from the Worker server-side → no referrer → key must be unrestricted (or IP-restricted, but Workers have many egress IPs). The two use cases need two keys with opposite restriction strategies.
+- **How to apply next time:** Provision **two** Maps Platform API keys early in the migration:
+  - `<project>-embed-key` — Application restrictions: HTTP referrers (site domain + `*.pages.dev/*` + `localhost`); API restrictions: Maps Embed API. Stored as `PUBLIC_*` env var (in HTML).
+  - `<project>-server-key` — Application restrictions: None (or strict IP if you have a static egress); API restrictions: only the specific APIs you call (Places API New, Geocoding, etc.). Stored as a Cloudflare Pages **secret**, never `PUBLIC_*`.
+
+## 2026-05-28 — GA4 conversion tracking via a single delegated click listener
+
+- **What happened:** Needed to track phone clicks, email clicks, free-consultation CTA clicks, and outbound clicks for GA4. Considered annotating every relevant `<a>` with `onclick=gtag(...)` (tedious + drift-prone). Instead, one delegated listener on `document` covers everything.
+- **Why:** All conversion-relevant clicks bubble up to `document`. A single listener can introspect each click target's `<a>` ancestor and fire the right event based on `href` prefix (`tel:`, `mailto:`, `/contact`, else `outbound_click`). No per-link annotation required, and dynamically-injected elements (mobile nav, hydrated React widgets) are covered automatically.
+- **How to apply next time:**
+  1. `<Analytics>` Astro component (in Base.astro `<head>`) emits the gtag loader + the delegated listener.
+  2. Form submissions fire from the form's success path directly (React: call `(window as any).gtag?.("event", "contact_form_submit", {...})` after the successful `fetch`).
+  3. Tell the client to mark each event as a Key Event in GA4 dashboard (Admin → Events → Mark as key event) **after** the event has fired at least once. The toggle isn't available pre-first-fire.
+  4. CSP needs: `script-src` + `https://www.googletagmanager.com`; `connect-src` + `https://www.google-analytics.com https://*.analytics.google.com`; `img-src` + the same.
+
+## 2026-05-28 — Always ask for the real brand kit before inventing marks
+
+- **What happened:** When building the Kicker component, I needed a small "K" icon to sit beside section labels. Didn't have the brand kit yet so I rendered a serif italic "K" in a 22×28 outlined box. The result looked plausible, the client used the site for a day, then said "that's not our logo — here's our brand kit". Hours of swap-out: Kicker, header, footer, `.kicker::before` CSS pseudo-element, OG card, favicon, `karnib-logo-horizontal.png` (which I'd cropped from the live site).
+- **Why:** Brand identity is non-negotiable but I treated it as visual polish. Ad-hoc identity marks always look "off" to the brand owner, and once they're embedded across components the swap is N edits.
+- **How to apply next time:**
+  1. First ask: "Do you have a brand kit / logo SVG / favicon source?" If yes, get it before writing the layout.
+  2. If no kit exists, isolate any placeholder mark in a single `<BrandMark>` component used everywhere. Then swap-out is one file edit.
+  3. Standard brand-kit folder structures (e.g. Sketchpad-style `Logomark/`, `Full Logo/`, `01 Colour/`, `02 Black and White/`) include navy/white/cream variants and SVG+PNG+EPS. Set up `public/images/brand/karnib-logomark-{navy,white,cream}.svg` and `karnib-fulllogo-{navy,white}-horizontal.svg` for the common tone × orientation combinations.
+  4. Use the white-on-dark variant in headers/footers that overlay dark backgrounds (transparent header + dark hero is common); the navy variant on cream/light bg.
+
+## 2026-05-28 — Generate the full favicon set from a single 512×512 PNG
+
+- **What happened:** Browsers were showing no favicon. The Base layout had `<link rel="icon" type="image/png" href="/favicon.png" />` but no `favicon.png` existed — only a `favicon.ico`. Browser saw the broken PNG reference and fell back to nothing rather than the ICO.
+- **Why:** Sub-issue of "don't trust your scaffolded defaults". The full modern favicon set has ~8 endpoints (ico, svg, multiple PNG sizes, apple-touch-icon, manifest, manifest icons) and every browser/OS combination picks differently.
+- **How to apply next time:**
+  ```bash
+  SRC=assets/favicon-512.png   # transparent-bg PNG, 512×512
+  magick "$SRC" -define icon:auto-resize=16,32,48 public/favicon.ico
+  magick "$SRC" -resize 32x32   public/favicon-32.png
+  magick "$SRC" -resize 96x96   public/favicon-96.png
+  magick "$SRC" -resize 180x180 public/apple-touch-icon.png
+  magick "$SRC" -resize 192x192 public/icon-192.png
+  magick "$SRC" -resize 512x512 public/icon-512.png
+  cp brand-kit/Logomark.svg public/favicon.svg
+  ```
+  And in Base.astro `<head>`:
+  ```html
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/site.webmanifest" />
+  ```
+  + a minimal `public/site.webmanifest` with name, theme_color, icons.
+- **Tell the client to hard-refresh** (Cmd-Shift-R) after deploying. Favicons are aggressively cached and a normal refresh won't show the new one for hours.
+
+## 2026-05-28 — Astro 404 just works — but only if the file exists
+
+- **What happened:** `/zzzz` was returning HTTP 200 with the homepage HTML. Cloudflare Pages was serving `dist/index.html` as the SPA fallback because no `dist/404.html` existed.
+- **Why:** CF Pages auto-serves `404.html` (with HTTP 404 status) for unmatched routes when present, falls back to `index.html` (with 200) when absent. Astro builds `dist/404.html` from `src/pages/404.astro` — but if that file doesn't exist, no 404 page gets emitted.
+- **How to apply next time:**
+  1. Create `src/pages/404.astro` early in the migration. Reuse the existing `Base` layout and Kicker/Button design system; add a card grid that lists the major site sections so the user can self-recover.
+  2. No CF config needed — Pages picks up `404.html` automatically.
+
+## 2026-05-28 — Conditional tag rendering in Astro (`<a>` vs `<div>`)
+
+- **What happened:** GoogleReviewBadge needed to be a link when `href` is provided, and a plain `<div role="img">` otherwise (display-only). Wrote two branches initially; switched to a single dynamic `<Tag>` and spread the prop set.
+- **Why / how:** Astro supports dynamic element tags via a capitalised variable:
+  ```astro
+  ---
+  const Tag = href ? "a" : "div";
+  const interactiveProps = href
+    ? { href, target: "_blank", rel: "noopener noreferrer", "aria-label": label }
+    : { role: "img", "aria-label": label };
+  ---
+  <Tag class:list={[...baseCls, ...(href ? hoverCls : [])]} {...interactiveProps}>
+    <slot />
+  </Tag>
+  ```
+  Beats branching the entire markup twice.
+
+## 2026-05-28 — Schema migrations: grep every consumer first
+
+- **What happened:** Migrated `team.location: string` → `team.locations: string[]` so a lawyer could be listed at multiple offices. Build succeeded; runtime broke because three consumers (team index, team detail page, locations page filter) still referenced `.location`.
+- **Why:** Astro's content collection schema is strongly typed via Zod, but consumers using `entry.data.fieldName` are loosely-typed once you've extracted them via destructuring — TypeScript missed the renames.
+- **How to apply next time:** Before renaming a content schema field, run:
+  ```bash
+  grep -rn "data\.<oldFieldName>\b" src/
+  ```
+  Update every consumer in the same commit as the schema change + MDX edits. Then `bun run build` — content collection load errors will flag any MDX file that didn't get updated.
+
+---
+
 ## 2026-05-28 — Pivot: Astro 6 beats TanStack Start for marketing sites
 
 - **What happened:** We initially planned TanStack Start + Cloudflare Pages. Hit the worker-runtime-no-fs problem immediately, then the wrangler-OAuth-DNS-permission problem, then the CSS-in-CF problem. Pivoted to Astro 6 static + Cloudflare Pages + Pages Functions and the entire migration finished in a day.
