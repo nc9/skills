@@ -124,6 +124,7 @@ npx skills add https://github.com/nc9/skills/tree/main/generate-image
 |---|---|---|
 | [commit](./commit/) | Pre-commit workflow — test, lint, format, type-check, atomic commits | None (local) |
 | [review](./review/) | Structured code review via OpenAI Codex MCP — 0-5 score, prioritized issues with file:line citations, verification pass; context from GitHub/Linear/Sentry + plans + conversation | [OpenAI](https://platform.openai.com/) (Codex MCP or CLI) |
+| [geist-design](./geist-design/) | Modern dev-tool design aesthetic — the Vercel / Linear / Stripe / Resend visual language for premium UI | None (local) |
 | [web-ui](./web-ui/) | Principles for building great web app interfaces | None (local) |
 | [wordpress-to-astro](./wordpress-to-astro/) | Migrate a WordPress site (Elementor + Gravity Forms + Rank Math) to static Astro + MDX on Cloudflare Pages, with Pages Functions + Resend contact form, JSON-LD, and a Search Console refinement loop | None (local; uses other skills) |
 
