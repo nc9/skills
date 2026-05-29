@@ -5,7 +5,7 @@ description: Generate or edit images using OpenAI gpt-image-2 (default) or Googl
 
 # Generate Image
 
-Generate and edit images via OpenRouter. Defaults to OpenAI `gpt-image-2` (strong instruction following, good for logos/icons/brand work). Gemini 3.1 Flash remains available via `--model`.
+Generate and edit images via OpenRouter. Defaults to OpenAI `gpt-image-2` (strong instruction following, good for editing existing brand assets and editorial illustration). For **fresh, crisp flat-vector icons drawn from scratch**, switch to Gemini at 2K + `--reasoning high` — gpt-image-2 imitates vector style but produces shimmer/wobble that becomes obvious when downscaled to favicon/tile sizes.
 
 ## When to Use This Skill
 
@@ -50,16 +50,16 @@ Either or both can be set in `.env`, exported in the shell, or sourced from `~/.
 
 ## Models
 
-- **Default**: `gpt-image-2` (OpenAI) — called via the OpenAI SDK directly. Strong prompt adherence and text rendering. Wins on structured brand work: square icons, wordmark logos, exact-color preservation, color swaps, editorial illustrations with clear subject composition. Supports portrait/landscape sizes and quality tiers via the SDK.
-- **Alternative**: `google/gemini-3.1-flash-image-preview` (Nano Banana 2) — called via OpenRouter. Wins on illustrated character/mascot consistency, extended aspect ratios (1:4, 4:1, 1:8, 8:1), and the `0.5K/1K/2K/4K` size tiers. Select with `-m google/gemini-3.1-flash-image-preview`.
+- **Default**: `gpt-image-2` (OpenAI) — called via the OpenAI SDK directly. Strong prompt adherence and text rendering. Wins on **editing** existing brand assets (preserve layout, color swap, light/dark variant), wordmark logos with exact brand-color fidelity, and editorial illustration. Caveat: when **drawing flat-vector icons from scratch**, the raster output imitates vector style but shimmers at downscale — the geometry is never truly clean. Use Gemini for fresh icon generation. Supports portrait/landscape sizes and quality tiers via the SDK.
+- **Alternative**: `google/gemini-3.1-flash-image-preview` (Nano Banana 2) — called via OpenRouter. Wins on **fresh flat-vector icons** (much crisper edges at 2K + `--reasoning high` — geometry actually looks like vector instead of imitating it), illustrated character/mascot consistency, extended aspect ratios (1:4, 4:1, 1:8, 8:1), and `0.5K/1K/2K/4K` size tiers. Select with `-m google/gemini-3.1-flash-image-preview`.
 
 ### Capability matrix (empirically tested)
 
 | Need | gpt-image-2 (default) | Gemini 3.1 Flash |
 |---|---|---|
-| Square app icons (preserve existing) | ✅ best | ✅ good |
+| **Fresh** flat-vector app icons (drawn from prompt) | ⚠️ raster shimmer, wobbly geometry, jaggies on downscale | ✅ best — use `--size 2K --reasoning high` |
+| **Edit** existing icon (preserve layout, color swap, light/dark variant) | ✅ best — adheres rigidly to reference | ✅ good |
 | Wordmark logos / brand text rendering | ✅ best (correct colors) | ⚠️ drifts on brand colors |
-| Edit existing logo/icon preserving layout | ✅ best | ✅ good |
 | Color swap on brand mark (e.g. purple → teal) | ✅ clean | ✅ clean |
 | Illustrated character / mascot consistency | ⚠️ loses accent colors | ✅ best — pass reference via `-i` |
 | Fresh editorial illustration (subject scene) | ✅ richer, more complete | ⚠️ sparser |
@@ -76,7 +76,8 @@ Either or both can be set in `.env`, exported in the shell, or sourced from `~/.
 ### Routing decision tree
 
 ```
-Square icon, app mark, wordmark logo?                   → gpt-image-2 (default)
+Fresh flat-vector icon from prompt (crisp edges)?       → Gemini + --size 2K --reasoning high
+Wordmark / brand text logo (exact brand colors)?        → gpt-image-2 (default)
 Edit preserving existing layout/colors?                 → gpt-image-2 (default)
   Exception: illustrated character with accent colors   → Gemini + -i ref
 Portrait or landscape subject?                          → gpt-image-2 + -a 9:16 / 16:9 (or --size)
@@ -157,8 +158,10 @@ scripts/generate_image "Ultra-wide banner" -m google/gemini-3.1-flash-image-prev
 ### Logos, icons, mascots (primary use cases)
 
 ```bash
-# Square app icon — gpt-image-2 default is best here
-scripts/generate_image "Flat minimalist fox mark, orange/white, 1024x1024 app icon" -o icon.png
+# Fresh flat-vector app icon — Gemini at 2K + reasoning=high renders genuinely crisp geometry.
+# gpt-image-2 imitates vector look but shimmers at downscale; only use it for editing existing icons.
+scripts/generate_image "Flat minimalist fox mark, pure black #0A0A0A on white #FFFFFF, sharp geometric edges, no gradients/shadows/AI shimmer, vector-clean app icon" \
+  -m google/gemini-3.1-flash-image-preview --size 2K --reasoning high -o icon.png
 
 # Icon variant: light-theme version from the dark source
 scripts/generate_image "Light-theme variant of the reference icon: white bg, dark letterform, preserve corner badge exactly, keep rounded-square tile proportions" -i icon-dark.png -o icon-light.png
@@ -351,6 +354,8 @@ If the script fails, read the error message and address the issue before retryin
 | Need wider than 16:9 (e.g. 4:1, 21:9 exact) | gpt-image-2 maxes out at 1536×1024 | Switch to Gemini + `-a 4:1` / `21:9` |
 | Need bigger than 1536px | gpt-image-2 is capped | Switch to Gemini + `--size 2K` or `4K` |
 | API error "Transparent background is not supported" | Asked gpt-image-2 for alpha | Use chroma-key workflow above |
+| Icon edges look like "bad SVG" — wobbly strokes, jaggy corners, slanted terminals | Used gpt-image-2 for fresh flat-vector icon | Switch to Gemini + `--size 2K --reasoning high` |
+| Gemini returned `Error: No image in response` | Reasoning output sometimes returns text-only | Retry without `--reasoning high`, or simplify prompt |
 | Wordmark text came out purple/wrong color | Gemini misread accent color spec | Use gpt-image-2 (default) for wordmark work |
 | Mascot lost green accent / red collar | Used gpt-image-2 with illustrated ref | Switch to Gemini, list accent colors explicitly |
 | Input rejected ("file format") | Passed SVG to `-i` | Rasterize first with `qlmanage -t -s 1024` |
@@ -369,8 +374,9 @@ If the script fails, read the error message and address the issue before retryin
 
 These recommendations come from head-to-head runs against two real brand kits (a geometric SaaS logo + an illustrated mascot) plus direct SDK probes. Summary:
 
-- gpt-image-2 won 5/8 structured brand tasks (icons, wordmarks, color swaps, editorial illustration)
-- Gemini won on wide-aspect banners and illustrated-mascot accent-color preservation
+- gpt-image-2 wins on **editing** existing brand assets (rigid reference adherence), wordmark logos with exact brand colors, and editorial illustration
+- Gemini wins on **fresh flat-vector icon generation** (`--size 2K --reasoning high` produces genuinely crisp geometry; gpt-image-2's raster-imitating-vector shimmers and wobbles at favicon/tile downscale), wide-aspect banners, and illustrated-mascot accent-color preservation
+- For icons: a side-by-side run of 10 prompts showed gpt-image-2 outputs looked like "bad SVGs" — slightly off-axis terminals, inconsistent stroke widths, jaggy corners — while Gemini at 2K produced edges indistinguishable from hand-authored vector
 - Neither produces real alpha; transparency requires the chroma-key + `remove-background` flow
 - gpt-image-2's transparency is rejected at the API level (`"Transparent background is not supported for this model"`) — confirmed via direct OpenAI SDK probe
 - gpt-image-1 (predecessor) does support `background="transparent"` but renders washed-out line-art for icons — not a viable fallback
