@@ -22,9 +22,17 @@ Create well-researched, human-sounding content with AI detection verification an
 3. **Generate suggestions** - Topic, title, excerpt ideas based on research + existing content
 4. **Research** - Deep research to ground the content
 5. **Write** - Create the content in the chosen voice
-6. **Humanize** - Run through humanizer skill
+6. **Humanize → Detect → Humanize → Detect** - Two full loops, in this order. See Step 6.
 7. **Generate thumbnail** - Create matching illustration
-8. **Verify** - Run AI detection to ensure quality
+8. **Publish** - Only after Step 6 completes and the publish gate passes.
+
+---
+
+## ⛔ PUBLISH GATE (read this first)
+
+**NEVER publish — to a CMS, repo, MCP endpoint, file, or anywhere else — until Step 6 has completed both loops and the final AI-detection score is acceptable.** This applies to every article, single or batched. No exceptions for momentum, deadlines, or "I'll humanize them after." Drafting and shipping in a single pass produces detectable AI prose every time; the loop is the skill, not an optional polish.
+
+If you find yourself about to call a publish/create-post/commit tool with content that has not been through both Step 6 loops, STOP and run the loops first.
 
 ---
 
@@ -203,17 +211,50 @@ tags:
 
 ---
 
-## Step 6: Humanize the Content
+## Step 6: Humanize → Detect → Humanize → Detect (TWO LOOPS, MANDATORY)
 
-**CRITICAL:** After writing, use the `humanizer` skill to remove AI patterns.
+This step is the core of the skill. Do it in this order, every time, before any publish action.
 
-Key areas humanizer addresses:
-- AI vocabulary ("delve", "landscape", "testament", etc.)
-- Structural tells (rule of three, parallel lists)
-- Missing personality and voice
-- Over-polished, consistent sentence lengths
+### Loop 1
 
-The humanizer skill contains 46+ patterns to detect and fix. Run the content through it before proceeding.
+**6a. Humanize.** Apply the `humanizer` skill to the full draft. Address:
+- AI vocabulary ("delve", "landscape", "testament", "navigate", "underscore", etc.)
+- Structural tells: rule of three, parallel section headers, "X is the new Y" frames, "what to actually do" closers, mechanical "First / Second / Third" lists
+- Missing personality — inject the bylined author's specific voice (cadence, opinions, asides, "I" usage where natural)
+- Over-polished, uniform sentence lengths — vary aggressively (fragments + long sentences)
+- Generic upbeat last lines
+
+**6b. Detect.** Run AI detection on the humanized draft:
+
+```bash
+~/.claude/skills/ai-writing-detector/scripts/detect detect <draft-file> --input-format markdown --output json
+```
+
+Capture `fraction_ai`, `fraction_ai_assisted`, `fraction_human`. If `fraction_ai < 0.25` AND `fraction_ai_assisted < 0.40`, you can skip Loop 2 and proceed to Step 7. Otherwise continue.
+
+### Loop 2
+
+**6c. Humanize again, focused.** Look at the Pangram segment-level output from 6b. Identify the highest-scoring segments (the ones flagged most strongly as AI). Rewrite those segments specifically:
+- Break parallel/symmetrical structure
+- Replace listicle scaffolding with narrative
+- Add specific personal anecdote, named brand, real product, concrete number, or first-person aside per ~300 words
+- Cut any closing-paragraph macro framing
+
+**6d. Detect again.** Re-run the detector on the second-pass version.
+
+### Decision
+
+| Final `fraction_ai` | Action |
+|---|---|
+| Below 25% | Proceed to Step 7. |
+| 25-50% | Acceptable for publish if voice is genuinely distinct and the content is structurally constrained (listicles, monthly guides, fertility/medical, finance — Pangram has known topic+format bias). Note the score in the report. |
+| Above 50% | Do NOT proceed to publish. Either restructure the article (different format — e.g. listicle → narrative, survey → Q&A) and restart Step 6, or escalate to the user with the segment scores and ask whether to publish anyway. |
+
+### Why two loops, in this order
+
+Humanize first because Pangram detects patterns; running detection on raw AI output produces a high score that you then have to chase. Humanize first removes the obvious patterns so the detector tells you about the *remaining* ones — the subtle scaffolding that needs a second targeted pass. Doing it in the other order wastes a detection cycle and biases the second humanization toward whatever the first detector run flagged, missing the structural tells.
+
+Two loops, not three or more. If the score is still high after two loops, the article needs structural redesign, not more humanization passes — log the issue and either restructure or escalate.
 
 ---
 
