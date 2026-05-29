@@ -70,70 +70,74 @@ git diff --name-only
 - `*.py` → Python toolchain
 - Mixed → run both toolchains
 
-### 3. Run Tests
+### 3. Run Quality Gates
 
-Check for test entry points in order:
+Run **format, lint, typecheck, and tests**. Always prefer project-defined scripts over hardcoded language tooling — most repos already have a `make check` target or a `bun run check` / `npm test` script that bundles their exact toolchain (biome vs oxlint vs eslint, tsc vs tsgo, etc.). Only fall through to language defaults when no project script exists.
 
-**1. Makefile (preferred):**
+#### Detection order
+
+For each gate (format, lint, typecheck, test), try entries top-to-bottom and use the first that exists:
+
+**1. Makefile target** (preferred — projects pin their full toolchain here):
 ```bash
+# Composite gate (covers everything in one shot when present):
+make -n check 2>/dev/null && make check
+make -n ci 2>/dev/null && make ci
+
+# Per-gate targets:
+make -n format 2>/dev/null && make format
+make -n lint 2>/dev/null && make lint
+make -n typecheck 2>/dev/null && make typecheck
 make -n test 2>/dev/null && make test
-# OR default target
-make -n 2>/dev/null && make
 ```
 
-**2. package.json (TypeScript/JS):**
+**2. `package.json` scripts** (TypeScript/JS):
 ```bash
-# Check for test script
+# Composite first — many projects have `check` or `check:strict`:
+jq -e '.scripts."check:strict"' package.json && bun run check:strict
+jq -e '.scripts.check' package.json && bun run check
+jq -e '.scripts.ci' package.json && bun run ci
+
+# Per-gate scripts:
+jq -e '.scripts.format' package.json && bun run format
+jq -e '.scripts.lint' package.json && bun run lint
+jq -e '.scripts.typecheck' package.json && bun run typecheck
 jq -e '.scripts.test' package.json && bun run test
 ```
 
-**3. pytest (Python):**
+**3. `pyproject.toml` scripts** (Python):
 ```bash
-# Check for pytest config or test files
+# uv-managed task runners vary; check for the convention used in the repo:
+uv run -- task check 2>/dev/null || uv run pytest
+```
+
+**4. Language defaults** (only if nothing above exists):
+```bash
+# TypeScript fallback:
+bunx biome lint --write .
+bunx biome format --write .
+bunx tsc --noEmit
+
+# Python fallback:
+uv run ruff check --fix .
+uv run ruff format .
+uv run ty check .          # fallback: uv run basedpyright .
 uv run pytest
 ```
 
-Run first available. Skip with note if none found.
+#### What "first available" means
 
-### 4. Lint
+- A composite script (`check`, `check:strict`, `ci`, `make check`) covers all four gates — running it satisfies format + lint + typecheck + test and the per-gate steps below can be skipped.
+- If the composite is missing, run the per-gate scripts individually using the same priority order.
+- If a per-gate script is missing AND no language default applies (e.g. a Go-only repo), skip that gate with a note rather than inventing a command.
 
-**TypeScript:**
-```bash
-bunx biome lint --write .
-```
+#### Why detection > hardcoding
 
-**Python:**
-```bash
-uv run ruff check --fix .
-```
+Hardcoding `bunx biome` or `bunx tsc` will run the wrong tools in projects that use oxlint/oxfmt/tsgo/eslint and either silently produce no findings or emit confusing errors. The project's own scripts encode the right toolchain choice — trust them.
 
-### 5. Format
+If lint or format mutates files, re-stage the changes before the commit step.
 
-**TypeScript:**
-```bash
-bunx biome format --write .
-```
-
-**Python:**
-```bash
-uv run ruff format .
-```
-
-### 6. Type Check
-
-**TypeScript:**
-```bash
-bunx tsc --noEmit
-```
-
-**Python:**
-```bash
-uv run ty check .
-# fallback if ty unavailable:
-uv run basedpyright .
-```
-
-### 7. Extract Issue References
+### 4. Extract Issue References
 
 Scan the conversation for issue references from:
 
@@ -156,7 +160,7 @@ fix(scope): message
 Closes: BACKEND-4ZW
 ```
 
-### 8. Atomic Commits
+### 5. Atomic Commits
 
 Group related changes. Each feature/fix gets its own commit.
 
