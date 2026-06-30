@@ -1,0 +1,376 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "requests",
+#     "python-dotenv",
+#     "typer",
+#     "defusedxml",
+# ]
+# ///
+"""
+animate-svg skill
+
+Generate a single, self-contained, looping ANIMATED SVG via Google Gemini Pro
+over OpenRouter chat-completions. Gemini Pro is unusually strong at writing
+hand-crafted SVG + CSS/SMIL motion, which is what this skill leans on.
+
+Output is SVG markup (text), not a raster image — distinct from generate-image.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+from pathlib import Path
+from typing import Annotated
+
+import requests
+import typer
+from defusedxml.ElementTree import fromstring as xml_fromstring
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# --- Config ---
+
+DEFAULT_MODEL = "google/gemini-3.1-pro-preview"  # best Gemini Pro for SVG motion
+DEFAULT_OUTPUT = "animation.svg"
+ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+
+# Style presets — the look of the animation. Each is a concrete recipe so the
+# model produces something consistent rather than improvising the medium.
+STYLES: dict[str, str] = {
+    "halftone": (
+        "HALFTONE DOT-CLOUD with a SMOOTH COLOR GRADIENT — like a Fumadocs-style "
+        "glowing dot cloud or a colored newspaper halftone. The result MUST be "
+        "vibrantly multi-colored; a flat monochrome dot field is WRONG.\n"
+        "USE THIS EXACT TECHNIQUE so color flows across the whole cloud:\n"
+        "1. Define ONE gradient — <linearGradient> or <radialGradient> — with "
+        "gradientUnits=\"userSpaceOnUse\" and coordinates spanning the full canvas, "
+        "blending the provided palette colors (e.g. accent -> primary, plus an optional "
+        "neutral). Because it is userSpaceOnUse, the gradient is positioned in canvas "
+        "space, not per-shape.\n"
+        "2. Draw a regular grid of <circle> dots (~26-40 columns), and give EVERY dot "
+        "fill=\"url(#grad)\". Each dot then samples the gradient color AT ITS POSITION, "
+        "so the cloud shows a smooth color transition. Never give all dots one flat fill.\n"
+        "3. Put a dot at EVERY grid cell — never leave large empty regions or scatter a "
+        "few dots. Convey the subject PURELY by varying each dot's RADIUS (large where the "
+        "shape is solid, shrinking toward a tiny-but-present dot in empty areas), so the "
+        "frame always reads as a full, even halftone that fills most of the canvas — like "
+        "ordered (Bayer) dithering. Make the shape BOLD and clearly readable.\n"
+        "4. Animate a slow shimmer / RENDER-SWEEP: stagger each dot's scale and opacity "
+        "by its grid position so a soft wave drifts across and it gently breathes/assembles. "
+        "Seamless infinite loop.\n"
+        "Aim for 300-600 dots on a deterministic grid. Priority order: (a) vibrant color "
+        "gradient, (b) soft glowing cloud, (c) readable subject shape."
+    ),
+    "ascii": (
+        "ASCII / TEXTMODE ART — refined and detailed, in the spirit of box.ascii.dev. "
+        "Render the subject as a fine grid of monospace glyphs using <text> elements in "
+        "a monospace font (e.g. 'Courier New', monospace), small font-size, tight "
+        "line-height. Use the classic density ramp (' .:-=+*#%@') to shade form, and "
+        "box-drawing characters for clean structure. Make it a real, recognizable "
+        "illustration — not a few crude rows. Use COLOR from the palette, not one flat "
+        "tone: structure/text in the primary color, key highlights/accents in the accent "
+        "color, faint detail in a neutral. Lay glyphs on a fixed character grid. Animate "
+        "with a tasteful staggered wave — content typing/scanning in, a blinking cursor, "
+        "or a soft shimmer across glyphs. Seamless infinite loop. Crisp and terminal-like."
+    ),
+    "line": (
+        "MINIMAL LINE-ART / TECHNICAL DIAGRAM. Draw the subject with thin clean strokes "
+        "(stroke-based <path>/<rect>/<line>, mostly fill:none). Animate with "
+        "stroke-dasharray/stroke-dashoffset draw-on, plus subtle motion on key parts. "
+        "Restrained, blueprint/box-drawing feel. Seamless infinite loop."
+    ),
+    "glyph": (
+        "ICON GLYPH. A single bold, simple pictographic mark for the subject, centered, "
+        "with one tasteful looping micro-animation (a pulse, a sweep, a draw-on, or a "
+        "moving accent). Flat vector, generous negative space. Seamless infinite loop."
+    ),
+}
+
+SYSTEM_PROMPT = """You are an expert SVG motion designer. You output ONE self-contained, \
+production-ready, looping animated SVG and ABSOLUTELY NOTHING ELSE — no markdown code \
+fences, no prose, no explanation before or after.
+
+HARD REQUIREMENTS (a response that violates any of these is useless):
+- Output starts with `<svg` and ends with `</svg>`. Exactly one root <svg>.
+- The root <svg> MUST declare xmlns="http://www.w3.org/2000/svg" and an explicit \
+viewBox="0 0 {W} {H}". Do NOT set width/height attributes — the SVG will be sized by CSS.
+- ALL animation is done inside the SVG via an inline <style> with CSS @keyframes, or via \
+SMIL (<animate>/<animateTransform>). The animation MUST loop seamlessly and infinitely.
+- Self-contained ONLY: no <script>, no <image>, no <foreignObject>, no external fonts, \
+no url() references to outside resources, no JS event handlers.
+- Include a reduced-motion guard so it is static for users who opt out: \
+`@media (prefers-reduced-motion: reduce) {{ * {{ animation: none !important; }} }}`.
+- Lightweight and performant; prefer transform/opacity animation.
+- If you scale or rotate elements about their own center, set \
+`transform-box: fill-box` on them. SVG's transform-box defaults to view-box, so \
+`transform-origin: center` otherwise pivots around the whole canvas (every dot drifts \
+toward the centre instead of pulsing in place).
+- Respect the palette and background below; never use pure black on the given background.
+
+CANVAS: viewBox 0 0 {W} {H} ({W}x{H}).
+BACKGROUND: {BG}{BG_NOTE}
+PALETTE (use these colors): {COLORS}
+
+STYLE: {STYLE}
+
+SUBJECT TO DEPICT: {SUBJECT}
+
+{EXTRA}Remember: respond with the raw SVG markup only."""
+
+
+# --- Helpers ---
+
+
+def get_api_key(api_key: str | None) -> str:
+    key = api_key or os.getenv("OPENROUTER_API_KEY")
+    if not key:
+        typer.echo("Error: OPENROUTER_API_KEY not found", err=True)
+        typer.echo("\nSet in .env, export it, or source ~/.secrets:", err=True)
+        typer.echo("  OPENROUTER_API_KEY=your-api-key-here", err=True)
+        typer.echo("\nGet a key: https://openrouter.ai/keys", err=True)
+        raise typer.Exit(1)
+    return key
+
+
+def extract_svg(text: str) -> str | None:
+    """Pull the single <svg>...</svg> block out of a model response."""
+    if not text:
+        return None
+    # Drop ``` fences if the model wrapped the answer anyway.
+    text = re.sub(r"^```(?:svg|xml|html)?", "", text.strip(), flags=re.IGNORECASE)
+    text = re.sub(r"```$", "", text.strip())
+    start = text.find("<svg")
+    end = text.rfind("</svg>")
+    if start == -1 or end == -1:
+        return None
+    svg = text[start : end + len("</svg>")]
+    # Strip XML comments — models leak first-person meta-narration ("I will use
+    # a concise structure...") into <!-- --> that would ship in the static asset.
+    svg = re.sub(r"<!--.*?-->", "", svg, flags=re.DOTALL)
+    # Collapse the blank lines those comments leave behind.
+    svg = re.sub(r"\n[ \t]*\n[ \t]*\n+", "\n\n", svg)
+    return svg.strip()
+
+
+def validate_svg(svg: str) -> tuple[bool, str]:
+    """Best-effort well-formedness + safety check. Returns (ok, message)."""
+    if "<script" in svg.lower():
+        return False, "SVG contains <script> (rejected for safety)"
+    try:
+        # defusedxml hardens against XXE / billion-laughs from model output.
+        xml_fromstring(svg)
+    except Exception as exc:  # ParseError + defusedxml's *Forbidden guards
+        return False, f"SVG is not well-formed / unsafe XML: {exc}"
+    return True, "ok"
+
+
+def build_prompt(
+    subject: str,
+    style_key: str,
+    width: int,
+    height: int,
+    colors: str,
+    bg: str,
+    extra: str | None,
+) -> str:
+    style = STYLES.get(style_key)
+    if style is None:
+        # Allow a free-form style description passed straight through.
+        style = style_key
+    transparent = bg.strip().lower() in {"none", "transparent", ""}
+    bg_note = (
+        " — do NOT paint a background rect; keep it transparent."
+        if transparent
+        else " — you MAY fill a background rect with this color."
+    )
+    return SYSTEM_PROMPT.format(
+        W=width,
+        H=height,
+        BG="transparent" if transparent else bg,
+        BG_NOTE=bg_note,
+        COLORS=colors,
+        STYLE=style,
+        SUBJECT=subject,
+        EXTRA=(extra.strip() + "\n\n") if extra else "",
+    )
+
+
+def call_openrouter(
+    prompt: str,
+    api_key: str,
+    model: str,
+    max_tokens: int,
+    temperature: float | None,
+    reasoning: str | None,
+    ref_svg: str | None,
+) -> tuple[str, str | None]:
+    user_content: object = prompt
+    if ref_svg:
+        user_content = (
+            prompt
+            + "\n\nHere is an existing SVG to refine/restyle (improve it, keep the same "
+            + "spirit unless told otherwise):\n\n"
+            + ref_svg
+        )
+
+    body: dict = {
+        "model": model,
+        "messages": [{"role": "user", "content": user_content}],
+        "max_tokens": max_tokens,
+    }
+    if temperature is not None:
+        body["temperature"] = temperature
+    if reasoning:
+        body["reasoning"] = {"effort": reasoning}
+
+    resp = requests.post(
+        ENDPOINT,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://squirrelscan.com",
+            "X-Title": "animate-svg skill",
+        },
+        json=body,
+        timeout=300,
+    )
+    if resp.status_code != 200:
+        typer.echo(f"API Error ({resp.status_code}): {resp.text[:1000]}", err=True)
+        raise typer.Exit(1)
+    data = resp.json()
+    choices = data.get("choices")
+    if not choices:
+        typer.echo(f"Error: no choices in response: {data}", err=True)
+        raise typer.Exit(1)
+    choice = choices[0]
+    return (choice["message"].get("content") or "", choice.get("finish_reason"))
+
+
+# --- CLI ---
+
+
+def main(
+    subject: Annotated[
+        str, typer.Argument(help="What the animation should depict")
+    ],
+    output: Annotated[
+        Path, typer.Option("--output", "-o", help="Output .svg path")
+    ] = Path(DEFAULT_OUTPUT),
+    style: Annotated[
+        str,
+        typer.Option(
+            "--style",
+            "-st",
+            help="halftone (default) | ascii | line | glyph | or a free-form description",
+        ),
+    ] = "halftone",
+    colors: Annotated[
+        str,
+        typer.Option(
+            "--colors",
+            "-c",
+            help="Palette to use, e.g. 'muted green #4a7c3f, soft orange #c8743a'",
+        ),
+    ] = "currentColor plus one subtle accent",
+    bg: Annotated[
+        str,
+        typer.Option(
+            "--bg",
+            "-b",
+            help="Background: a color, or 'transparent'/'none' (default transparent)",
+        ),
+    ] = "transparent",
+    size: Annotated[
+        str,
+        typer.Option("--size", help="viewBox WxH, e.g. 400x300 (default 400x300)"),
+    ] = "400x300",
+    model: Annotated[
+        str, typer.Option("--model", "-m", help=f"OpenRouter model (default {DEFAULT_MODEL})")
+    ] = DEFAULT_MODEL,
+    max_tokens: Annotated[
+        int, typer.Option("--max-tokens", "-t", help="Max output tokens")
+    ] = 40000,
+    temperature: Annotated[
+        float | None, typer.Option("--temperature", "--temp", help="Creativity 0.0-2.0")
+    ] = 0.8,
+    reasoning: Annotated[
+        str | None,
+        typer.Option(
+            "--reasoning",
+            "-r",
+            help="Reasoning effort: minimal|low|medium|high. Keep LOW for token-heavy "
+            "styles (halftone/ascii) — high effort eats the token budget and truncates the SVG.",
+        ),
+    ] = "low",
+    extra: Annotated[
+        str | None,
+        typer.Option("--extra", "-x", help="Extra instructions appended to the prompt"),
+    ] = None,
+    input: Annotated[
+        Path | None,
+        typer.Option("--input", "-i", help="Existing .svg to refine/restyle"),
+    ] = None,
+    retries: Annotated[
+        int, typer.Option("--retries", help="Retries if output is not valid SVG")
+    ] = 2,
+    api_key: Annotated[
+        str | None, typer.Option("--api-key", help="OPENROUTER_API_KEY override")
+    ] = None,
+) -> None:
+    """Generate a looping animated SVG with Gemini Pro via OpenRouter."""
+    key = get_api_key(api_key)
+
+    try:
+        width_s, height_s = size.lower().split("x")
+        width, height = int(width_s), int(height_s)
+    except ValueError:
+        typer.echo(f"Error: --size must look like WxH (got {size!r})", err=True)
+        raise typer.Exit(1) from None
+
+    ref_svg = None
+    if input is not None:
+        if not input.exists():
+            typer.echo(f"Error: input not found: {input}", err=True)
+            raise typer.Exit(1)
+        ref_svg = input.read_text()
+
+    prompt = build_prompt(subject, style, width, height, colors, bg, extra)
+
+    typer.echo(f"Model:   {model}", err=True)
+    typer.echo(f"Style:   {style}", err=True)
+    typer.echo(f"Canvas:  {width}x{height}  bg={bg}", err=True)
+    typer.echo(f"Subject: {subject[:70]}", err=True)
+
+    last_err = ""
+    for attempt in range(retries + 1):
+        if attempt:
+            typer.echo(f"Retry {attempt} ({last_err})...", err=True)
+        content, finish_reason = call_openrouter(
+            prompt, key, model, max_tokens, temperature, reasoning, ref_svg
+        )
+        svg = extract_svg(content)
+        if not svg:
+            if finish_reason == "length" or ("<svg" in content and "</svg>" not in content):
+                last_err = "truncated — raise --max-tokens or lower --reasoning"
+            else:
+                last_err = "no <svg> found in response"
+            continue
+        ok, msg = validate_svg(svg)
+        if not ok:
+            last_err = msg
+            continue
+        output.write_text(svg)
+        kb = len(svg.encode()) / 1024
+        typer.echo(f"Saved:   {output}  ({kb:.1f} KB, {svg.count('<') } elements)", err=True)
+        return
+
+    typer.echo(f"Error: failed to get valid SVG after {retries + 1} tries: {last_err}", err=True)
+    raise typer.Exit(1)
+
+
+if __name__ == "__main__":
+    typer.run(main)
