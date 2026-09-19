@@ -1,146 +1,47 @@
 ---
 name: ai-writing-detector
-description: Detect AI-generated text using Pangram API. Use when user asks to check if text/content is AI-written, detect AI content, verify human authorship, or check for plagiarism.
+description: Detect AI-generated text and check plagiarism using the Pangram API. Use when asked to check if text is AI-written, verify human authorship, or run a plagiarism check on a file.
 allowed-tools: Bash, Read
 ---
 
 # AI Writing Detector
 
-Detect AI-generated content and plagiarism using the Pangram API.
-
-## When to Use
-
-- User asks to check if text is AI-generated
-- User wants to verify human authorship
-- User asks to detect AI content in a document
-- User wants to check for plagiarism
-- Keywords: "AI detector", "AI written", "detect AI", "human written", "plagiarism check"
+Pangram API wrapper for AI-text detection and plagiarism checking.
 
 ## Requirements
 
-- `PANGRAM_API_KEY` - API key from [Pangram](https://pangram.cello.so/xGzUNafMfjD)
+- `PANGRAM_API_KEY` — [Pangram](https://pangram.cello.so/xGzUNafMfjD)
 
 ## Commands
 
-### Detect AI Content
-
 ```bash
-./scripts/detect detect <file_path> [options]
+./scripts/detect detect <file> [options]
+./scripts/detect plagiarism <file> [options]
 ```
+
+## Options
 
 | Option | Description |
 |--------|-------------|
-| `--api-key`, `-k` | Pangram API key (overrides env) |
-| `--short`, `-s` | Use short prediction (faster, 512 token limit) |
-| `--output`, `-o` | Output format: `json` (default) or `table` |
-| `--input-format`, `-i` | Input format: `text`, `markdown`, `html` (auto-detected from extension) |
+| `-k, --api-key` | Overrides env |
+| `-s, --short` | Short prediction, 512-token limit (`detect` only) |
+| `-o, --output` | `json` (default) or `table` |
+| `-i, --input-format` | `text`, `markdown`, `html` — auto-detected from extension |
 
-### Check Plagiarism
+## Output
 
-```bash
-./scripts/detect plagiarism <file_path> [options]
-```
+JSON. `detect`: `fraction_ai`, `fraction_ai_assisted`, `fraction_human`, `num_ai_segments`, `windows[]`. With `-s`: just `ai_likelihood`. `plagiarism`: `plagiarism_detected`, `percent_plagiarized`, `plagiarized_sentences`, `plagiarized_content[]`.
 
-| Option | Description |
-|--------|-------------|
-| `--api-key`, `-k` | Pangram API key (overrides env) |
-| `--output`, `-o` | Output format: `json` (default) or `table` |
-| `--input-format`, `-i` | Input format: `text`, `markdown`, `html` (auto-detected from extension) |
+## Gotchas
 
-## Input Format Detection
-
-Auto-detected from file extension:
-- **markdown**: `.md`, `.mdx`, `.markdown`, `.mdown`, `.mkd`
-- **html**: `.html`, `.htm`, `.xhtml`
-- **text**: everything else
-
-For markdown files:
-- Strips YAML frontmatter
-- Extracts `title`, `excerpt`, `description`, `summary` into plain text
-- Removes code blocks, images, links, formatting
-
-For HTML files:
-- Removes script/style/meta tags
-- Extracts visible text content
-
-## Output Format
-
-**Agents should prefer JSON output (default).** Use `--output table` only for human review.
-
-### AI Detection (JSON)
-
-Key fields:
-- `fraction_ai` - Percentage of text detected as AI-written (0.0-1.0)
-- `fraction_human` - Percentage of text detected as human-written (0.0-1.0)
-- `fraction_ai_assisted` - Percentage detected as AI-assisted (0.0-1.0)
-
-```json
-{
-  "fraction_ai": 0.45,
-  "fraction_ai_assisted": 0.30,
-  "fraction_human": 0.25,
-  "num_ai_segments": 3,
-  "windows": [
-    {"label": "AI-Generated", "ai_assistance_score": 0.92, "confidence": "Medium"}
-  ]
-}
-```
-
-### Short Prediction (JSON)
-
-```json
-{
-  "ai_likelihood": 0.87
-}
-```
-
-### Plagiarism Check (JSON)
-
-```json
-{
-  "plagiarism_detected": true,
-  "percent_plagiarized": 0.15,
-  "total_sentences_checked": 20,
-  "plagiarized_sentences": 3,
-  "plagiarized_content": [
-    {"source_url": "https://example.com", "matched_text": "..."}
-  ]
-}
-```
+- `-o/--output` selects the output **format** (`json` | `table`), not a file path — `-o report.json` is rejected as an invalid value. Redirect stdout to write a file.
+- Input is a file path only; there is no stdin or inline-text mode.
+- Markdown input is stripped to prose before sending: frontmatter `title`/`excerpt`/`description`/`summary` are prepended, code blocks, images, links and formatting are removed. HTML input is reduced to visible text. So scores describe the prose, not the raw file.
 
 ## Examples
 
 ```bash
-# Full AI detection analysis
-./scripts/detect detect essay.txt
-
-# Analyze markdown blog post (auto-detected)
 ./scripts/detect detect post.md
-
-# Force markdown parsing on .txt file
-./scripts/detect detect article.txt --input-format markdown
-
-# Analyze HTML page
-./scripts/detect detect page.html
-
-# Quick check (512 token limit)
-./scripts/detect detect essay.txt --short
-
-# Human-readable output
-./scripts/detect detect essay.txt --output table
-
-# With explicit API key
-./scripts/detect detect essay.txt --api-key sk-xxx
-
-# Check for plagiarism
-./scripts/detect plagiarism article.md --output table
+./scripts/detect detect article.txt -i markdown   # force md parsing on .txt
+./scripts/detect detect essay.txt -o table > report.txt
 ```
-
-## API Key Resolution
-
-The script searches for `PANGRAM_API_KEY` in order:
-1. `--api-key` CLI flag
-2. `PANGRAM_API_KEY` environment variable
-3. `.env` in current directory
-4. `.env.local` in current directory
-5. `.env` in home directory

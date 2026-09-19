@@ -15,6 +15,7 @@ import json
 import mimetypes
 import os
 import re
+from enum import Enum
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -22,6 +23,12 @@ import typer
 from dotenv import load_dotenv
 
 app = typer.Typer(help="Detect AI-generated text using Pangram API")
+
+
+class OutputFormat(str, Enum):
+    json = "json"
+    table = "table"
+
 
 # Input format detection
 MARKDOWN_EXTENSIONS = {".md", ".mdx", ".markdown", ".mdown", ".mkd"}
@@ -281,8 +288,8 @@ def detect(
         bool, typer.Option("--short", "-s", help="Use short prediction (faster, 512 token limit)")
     ] = False,
     output: Annotated[
-        str, typer.Option("--output", "-o", help="Output format: json or table")
-    ] = "json",
+        OutputFormat, typer.Option("--output", "-o", help="Output format")
+    ] = OutputFormat.json,
     input_format: Annotated[
         Optional[str], typer.Option("--input-format", "-i", help="Input format: text, markdown, html (auto-detected from extension)")
     ] = None,
@@ -318,7 +325,7 @@ def detect(
         raise typer.Exit(1)
 
     # Output result
-    if output == "table":
+    if output == OutputFormat.table:
         typer.echo(formatTable(result))
     else:
         typer.echo(json.dumps(result, indent=2))
@@ -331,8 +338,8 @@ def plagiarism(
         Optional[str], typer.Option("--api-key", "-k", help="Pangram API key")
     ] = None,
     output: Annotated[
-        str, typer.Option("--output", "-o", help="Output format: json or table")
-    ] = "json",
+        OutputFormat, typer.Option("--output", "-o", help="Output format")
+    ] = OutputFormat.json,
     input_format: Annotated[
         Optional[str], typer.Option("--input-format", "-i", help="Input format: text, markdown, html (auto-detected from extension)")
     ] = None,
@@ -361,7 +368,7 @@ def plagiarism(
         raise typer.Exit(1)
 
     # Output result
-    if output == "table":
+    if output == OutputFormat.table:
         lines = [
             "=" * 50,
             "PLAGIARISM CHECK RESULTS",
