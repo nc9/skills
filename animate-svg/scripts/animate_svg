@@ -232,7 +232,7 @@ def call_openrouter(
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://squirrelscan.com",
+            "HTTP-Referer": "https://github.com/nc9/skills",
             "X-Title": "animate-svg skill",
         },
         json=body,

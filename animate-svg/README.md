@@ -20,5 +20,3 @@ See [SKILL.md](./SKILL.md) for full options, guarantees, and examples.
 ## Related skills
 
 - **generate-image** — raster images (photos, icons, illustrations) via gpt-image / Gemini Flash.
-- **scientific-schematics** — static technical diagrams.
-- **optimize-image-web** — convert/resize raster output to WebP.
