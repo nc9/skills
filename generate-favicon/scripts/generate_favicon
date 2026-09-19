@@ -82,10 +82,9 @@ def generate(
 
     # Generate ICO file with multiple sizes
     ico_path = output_dir / "favicon.ico"
-    img_16 = img.resize((16, 16), Image.Resampling.LANCZOS)
-    img_32 = img.resize((32, 32), Image.Resampling.LANCZOS)
-    img_48 = img.resize((48, 48), Image.Resampling.LANCZOS)
-    img_16.save(ico_path, format="ICO", sizes=[(16, 16), (32, 32), (48, 48)])
+    # Save from the full-res source: Pillow drops any `sizes` entry larger than the
+    # image it is given, so saving from a pre-resized 16x16 yields a 16-only .ico.
+    img.save(ico_path, format="ICO", sizes=[(16, 16), (32, 32), (48, 48)])
     ico_size = ico_path.stat().st_size
     typer.echo(f"✓ {'favicon.ico':30} multi   {ico_size:>6,} bytes")
 
