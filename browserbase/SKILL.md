@@ -1,88 +1,50 @@
 ---
 name: browserbase
-description: Fetch web pages via Browserbase with proxy and captcha solving. Use when you need to scrape pages behind captchas, bot protection, or geo-restrictions.
+description: Fetch web pages via Browserbase headless browsers with proxy and automatic captcha solving. Use when a page is behind Cloudflare, bot protection or geo-restriction, or needs JavaScript rendered before its content is readable.
 allowed-tools: Bash, Read
 ---
 
 # Browserbase Fetch
 
-Fetch web pages using Browserbase headless browser with proxy and automatic captcha solving.
-
-## When to Use
-
-- Need to fetch a page behind Cloudflare/captcha protection
-- Need to scrape content that blocks bots
-- Need geo-located browsing via proxy
-- Need rendered JavaScript content (not just raw HTML)
+Remote headless Chromium via Browserbase, with proxy, captcha solving and ad blocking.
 
 ## Requirements
 
-- `BROWSERBASE_API_KEY` - [Get at browserbase.com](https://browserbase.com/)
-- `BROWSERBASE_PROJECT_ID` - from your Browserbase dashboard
+- `BROWSERBASE_API_KEY` — [browserbase.com](https://browserbase.com/)
+- `BROWSERBASE_PROJECT_ID` — from the Browserbase dashboard
 
 ## Commands
 
-### fetch — Single URL
-
 ```bash
-./scripts/browserbase_fetch fetch "https://example.com" [-f text] [--no-proxy]
-```
-
-### fetch-many — Multiple URLs (one session)
-
-```bash
-./scripts/browserbase_fetch fetch-many "https://a.com" "https://b.com" [-f json]
+./scripts/browserbase_fetch fetch "https://example.com" [options]
+./scripts/browserbase_fetch fetch-many "https://a.com" "https://b.com" [options]
 ```
 
 ## Options
 
 | Option | Description |
 |--------|-------------|
-| `-f, --format` | Output: `text` (default), `html`, `json` |
-| `--proxy/--no-proxy` | Enable Browserbase proxy (default: on) |
-| `--captcha/--no-captcha` | Enable captcha solving (default: on) |
-| `--block-ads/--no-block-ads` | Block ads (default: on) |
-| `-t, --timeout` | Page load timeout in seconds (default: 30) |
-| `-w, --wait` | Extra wait after load in ms (default: 0) |
+| `-f, --format` | `text` \| `html` \| `json` (default `text` for `fetch`, `json` for `fetch-many`) |
+| `--proxy / --no-proxy` | Proxy, default on |
+| `--captcha / --no-captcha` | Captcha solving, default on |
+| `--block-ads / --no-block-ads` | Ad blocking, default on |
+| `-t, --timeout` | Page load timeout, seconds (default 30) |
+| `-w, --wait` | Extra wait after load, ms (default 0) |
 
-## Output Format
+## Output
 
-**text** (default) — page body text, ideal for LLM consumption
+`text` is `document.body.innerText`, `html` the rendered DOM, `json` is `{url, title, content}`. `fetch-many` emits an array of those objects, substituting `{url, error}` for any page that failed.
 
-**html** — full rendered HTML
+## Gotchas
 
-**json** — structured output:
-```json
-{
-  "url": "https://example.com",
-  "title": "Example Domain",
-  "content": "Page body text..."
-}
-```
+- `fetch-many` ignores `-f` and always prints JSON. Use `fetch` per URL for text or html.
+- Each `fetch` opens and releases its own billed session; `fetch-many` reuses one, so batch when you can. `--no-proxy` is cheaper and faster where geo and IP reputation do not matter.
+- Load waits for `networkidle`, so pages that poll never settle — cap with `-t` and lean on `-w`.
 
 ## Examples
 
-Fetch with proxy + captcha (defaults):
 ```bash
-./scripts/browserbase_fetch fetch "https://example.com"
-```
-
-Fetch as HTML:
-```bash
-./scripts/browserbase_fetch fetch "https://example.com" -f html
-```
-
-Without proxy (faster, cheaper):
-```bash
-./scripts/browserbase_fetch fetch "https://example.com" --no-proxy
-```
-
-Wait for dynamic content:
-```bash
-./scripts/browserbase_fetch fetch "https://example.com" -w 3000
-```
-
-Multiple pages:
-```bash
-./scripts/browserbase_fetch fetch-many "https://a.com" "https://b.com" "https://c.com"
+./scripts/browserbase_fetch fetch "https://example.com" -f json
+./scripts/browserbase_fetch fetch "https://spa.example.com" -w 3000 -t 15
+./scripts/browserbase_fetch fetch-many "https://a.com" "https://b.com" --no-proxy
 ```

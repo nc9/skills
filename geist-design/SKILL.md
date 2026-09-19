@@ -1,6 +1,6 @@
 ---
 name: geist-design
-description: Apply the modern developer-tool design aesthetic — the visual language shared by Vercel, Linear, Stripe, Resend, Raycast, Supabase, and similar brands. Use when building marketing pages, dashboards, docs sites, landing pages, or polishing UI to feel "expensive" in the way these brands feel expensive. Common triggers — "make it look like Vercel/Linear", "modern dev tool look", "geist style", "linear style", "make it look polished/premium", or any UI work where the user is referencing this family of brands. Not for consumer-friendly aesthetics (Airbnb, Notion, Headspace), illustration-driven brands (Mailchimp, Slack), or playful/colorful brands (Figma, Miro).
+description: Apply the modern developer-tool aesthetic shared by Vercel, Linear, Stripe, Resend, Raycast and Supabase. Use for marketing pages, dashboards, docs or landing pages that should look polished/premium, or on "make it look like Vercel/Linear", "geist style".
 allowed-tools: Read
 ---
 

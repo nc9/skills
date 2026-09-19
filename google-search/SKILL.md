@@ -1,97 +1,50 @@
 ---
 name: google-search
-description: Search Google via Serper API — web, news, images, videos, places, maps, shopping, scholar, patents, autocomplete, reviews. Use when user needs Google search results, local business info, academic papers, news, shopping comparisons, or search suggestions.
+description: Search Google via Serper API — web, news, images, videos, places, maps, shopping, scholar, patents, autocomplete, reviews. Use for Google results, local business info, academic papers, news, price comparisons, or search suggestions.
 allowed-tools: Bash, Read
 ---
 
 # Google Search
 
-Google search across 11 search types using Serper API.
-
-## When to Use
-
-- User needs Google search results
-- Looking up local businesses or places
-- Searching for news, images, videos
-- Academic/scholarly research
-- Shopping/price comparisons
-- Patent searches
-- Getting autocomplete suggestions
+Serper API wrapper over 11 Google verticals.
 
 ## Requirements
 
-- `SERPER_API_KEY` - [Get one at serper.dev](https://serper.dev/)
+- `SERPER_API_KEY` — [serper.dev](https://serper.dev/)
 
-## Commands
+## Command
 
 ```bash
-./scripts/google_search web "query" [-n 10] [--gl us] [--hl en] [-t d] [-l "location"] [-f json]
-./scripts/google_search news "query" [-n 10] [-t w]
-./scripts/google_search images "query" [-n 10]
-./scripts/google_search videos "query" [-n 10]
-./scripts/google_search places "query" [-l "San Francisco"]
-./scripts/google_search maps "query" [-l "New York"]
-./scripts/google_search shopping "query" [-n 10]
-./scripts/google_search scholar "query" [-n 10]
-./scripts/google_search patents "query" [-n 10]
-./scripts/google_search autocomplete "query"
-./scripts/google_search reviews --data-id "cid_from_places"
+./scripts/google_search <vertical> "query" [options]
+# verticals: web news images videos places maps shopping scholar patents autocomplete reviews
 ```
 
-## Common Options
+## Options
 
-| Option | Description |
-|--------|-------------|
-| `-n, --num` | Number of results (default: 10) |
-| `--gl, --country` | Country code (default: us) |
-| `--hl, --lang` | Language code (default: en) |
-| `-p, --page` | Page number (default: 1) |
-| `-t, --time` | Time filter: h, d, w, m, y |
-| `-l, --location` | Location string |
-| `-f, --format` | Output: `json` (default) or `table` |
+| Option | Description | Verticals |
+|--------|-------------|-----------|
+| `-n, --num` | Results (default 10) | all but autocomplete, reviews |
+| `--gl, --country` | Country code (default us) | all |
+| `--hl, --lang` | Language code (default en) | all |
+| `-p, --page` | Page number (default 1) | all but autocomplete, reviews |
+| `-t, --time` | Recency: `h` `d` `w` `m` `y` | web, news, images, videos |
+| `-l, --location` | Location string | web, news, images, videos, places, maps, shopping |
+| `-d, --data-id` | Place cid, required | reviews |
+| `-f, --format` | `json` (default) or `table` | all |
 
-## Output Format
+## Output
 
-Default JSON for LLM parsing:
+JSON. `web` returns `{answerBox?, knowledgeGraph?, results[]}`, `autocomplete` a string array, every other vertical a bare result array.
 
-```json
-{
-  "answerBox": {"title": "...", "answer": "..."},
-  "knowledgeGraph": {"title": "...", "type": "...", "description": "..."},
-  "results": [
-    {"position": 1, "title": "...", "link": "...", "snippet": "..."}
-  ]
-}
-```
+## Gotchas
+
+- `reviews` takes no query argument — only `-d`, sourced from the `cid` field of a `places`/`maps` row.
+- Options are per-vertical: `-t` on `scholar` or `-l` on `patents` exits 2 with "no such option", it is not ignored.
 
 ## Examples
 
-Web search with time filter:
 ```bash
-./scripts/google_search web "AI regulation news" --time w
-```
-
-Local places:
-```bash
-./scripts/google_search places "coffee shops" --location "San Francisco"
-```
-
-Then get reviews using cid from places result:
-```bash
-./scripts/google_search reviews --data-id "0x808f7e..."
-```
-
-Academic search:
-```bash
-./scripts/google_search scholar "transformer architecture" -n 5
-```
-
-Autocomplete suggestions:
-```bash
-./scripts/google_search autocomplete "how to"
-```
-
-Table output:
-```bash
-./scripts/google_search web "python asyncio" -f table
+./scripts/google_search web "AI regulation" -t w -l "San Francisco"
+./scripts/google_search places "coffee shops" -l "San Francisco"   # yields cid
+./scripts/google_search reviews -d "0x808f7e..."
 ```

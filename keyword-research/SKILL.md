@@ -1,95 +1,46 @@
 ---
 name: keyword-research
-description: Performs SEO keyword research using DataForSEO API. Use when user asks about keyword ideas, search volume, CPC, competition data, or needs keywords for blog posts, landing pages, or content strategy.
+description: SEO keyword research via DataForSEO — search volume, CPC, and competition for keyword suggestions and semantically related terms. Use when asked for keyword ideas, search volume, or keywords for a blog post, landing page, or content plan.
 allowed-tools: Bash, Read
 ---
 
 # Keyword Research
 
-Research keywords for SEO, content planning, and paid search using the DataForSEO API.
-
-## When to Use
-
-- User asks for keyword ideas or suggestions
-- User needs search volume, CPC, or competition data
-- User is planning blog posts, articles, or landing pages
-- User wants to analyze keyword opportunities
-- User mentions SEO keyword research
+DataForSEO Labs wrapper returning volume, CPC and competition per keyword.
 
 ## Requirements
 
-Environment variables must be set:
-- `DATAFORSEO_USERNAME` - DataForSEO login email
-- `DATAFORSEO_PASSWORD` - DataForSEO API password
+- `DATAFORSEO_USERNAME` — DataForSEO login email
+- `DATAFORSEO_PASSWORD` — DataForSEO API password
 
 ## Commands
 
-### Get Keyword Suggestions
-
-Returns keywords containing the seed term with metrics:
-
 ```bash
-./scripts/keyword_research suggestions "seed keyword" -n 20
-```
-
-### Get Related Keywords
-
-Returns semantically related keywords:
-
-```bash
-./scripts/keyword_research related "seed keyword" -n 20
+./scripts/keyword_research suggestions "seed" ["seed2" ...] [options]   # keywords containing the seed
+./scripts/keyword_research related "seed" ["seed2" ...] [options]       # semantically related keywords
 ```
 
 ## Options
 
 | Option | Description |
 |--------|-------------|
-| `-n, --limit` | Max results per seed (default: 50) |
-| `-f, --format` | Output format: `json` (default) or `table` |
+| `-n, --limit` | Max results per seed (default 50) |
+| `-f, --format` | `json` (default) or `table` |
 
-## Output Format
+## Output
 
-Default JSON output for easy parsing:
+JSON array, one object per seed: `{seed, keywords: [{keyword, search_volume, cpc, competition, competition_level}]}`. `competition` is 0-1, `competition_level` is `LOW`/`MEDIUM`/`HIGH`, `cpc` is USD.
 
-```json
-[
-  {
-    "seed": "ai seo",
-    "keywords": [
-      {
-        "keyword": "ai seo tools",
-        "search_volume": 2900,
-        "cpc": 25.48,
-        "competition": 0.09,
-        "competition_level": "LOW"
-      }
-    ]
-  }
-]
-```
+## Gotchas
+
+- Locale is hardcoded to US (location code 2840) and English, with no CLI override. Edit `DEFAULT_LOCATION_CODE`/`DEFAULT_LANGUAGE_CODE` in the script for other markets.
+- Each seed is a separate billed API call, so `-n` caps results but not cost.
+- A seed that errors is logged to stderr and dropped from the output array while the exit code stays 0. Compare array length against seeds passed.
 
 ## Examples
 
-Research keywords for a blog post:
 ```bash
 ./scripts/keyword_research suggestions "python tutorial" -n 30
-```
-
-Compare multiple seed keywords:
-```bash
-./scripts/keyword_research suggestions "react hooks" "vue composition api" -n 20
-```
-
-Get table output for human review:
-```bash
+./scripts/keyword_research related "react hooks" "vue composition api" -n 20
 ./scripts/keyword_research suggestions "ai tools" -f table
 ```
-
-## Interpreting Results
-
-| Field | Meaning |
-|-------|---------|
-| `search_volume` | Monthly searches (Google US) |
-| `cpc` | Cost per click in USD |
-| `competition` | 0-1 scale (higher = more competitive) |
-| `competition_level` | LOW, MEDIUM, or HIGH |

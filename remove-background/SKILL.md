@@ -1,81 +1,48 @@
 ---
 name: remove-background
-description: Remove backgrounds from images using AI segmentation. Use when user asks to remove, delete, or make transparent backgrounds from photos or images.
+description: Remove image backgrounds locally with the BiRefNet segmentation model, writing a transparent PNG. Use when asked to remove or cut out a background, isolate a subject, or make a transparent version of a photo. No API key.
 allowed-tools: Bash, Read
 ---
 
 # Remove Background
 
-Remove image backgrounds using BiRefNet_lite model. Runs locally on CPU, MPS (Apple Silicon), or CUDA.
-
-## When to Use
-
-- User wants to remove background from an image
-- User wants a transparent PNG version of an image
-- User wants to isolate a subject from its background
+Local BiRefNet segmentation (`ZhengPeng7/BiRefNet`) on CUDA, MPS or CPU. Output is always RGBA PNG.
 
 ## Requirements
 
-No API keys required. Model downloads automatically on first run (~100MB, cached).
+No API key. First run is expensive: uv builds a ~790 MB environment (torch, torchvision, transformers, timm, kornia) and downloads ~445 MB of model weights to `~/.cache/huggingface`. Both are cached; later runs start in seconds.
 
 ## Command
 
 ```bash
-./scripts/remove_background <input_image> [options]
+./scripts/remove_background <input_image> [options]   # single command, no subcommand
 ```
 
 ## Options
 
 | Option | Description |
 |--------|-------------|
-| `input` | Input image path (required) |
-| `-o, --output` | Output path (default: `{name}_nobg.png`) |
-| `-c, --crop` | Smart crop to foreground bounding box |
-| `-p, --padding` | Padding around crop in pixels (default: 0) |
-| `--device` | Force device: cuda/mps/cpu (default: auto-detect) |
-| `-f, --format` | Output: json (default) or table |
+| `-o, --output` | Output path (default `{name}_nobg.png`) |
+| `-d, --device` | Force `cuda` \| `mps` \| `cpu` (default auto: CUDA > MPS > CPU) |
+| `-c, --crop` | Crop to the foreground bounding box |
+| `-p, --padding` | Padding around the crop, px (default 0) |
+| `-f, --format` | `json` (default) or `table` |
+
+## Output
+
+JSON: `input`, `output`, `device`, `original_size`, `output_size`, `cropped`, `model`, plus `crop_box` when a box was found.
+
+## Gotchas
+
+- The saved file is always PNG whatever extension `-o` gets; `-f` is the stdout report format, not the image format.
+- Inference resizes to 1024x1024 and scales the mask back up, so large images lose edge detail.
+- `cropped` echoes the `-c` flag, not whether a crop happened. A fully opaque image yields no bbox: `crop_box` is absent and nothing is cropped.
+- MPS falls back to CPU for unsupported ops (`PYTORCH_ENABLE_MPS_FALLBACK=1` is set); use `-d cpu` if MPS misbehaves.
 
 ## Examples
 
 ```bash
-# Basic usage - outputs photo_nobg.png
 ./scripts/remove_background photo.jpg
-
-# Smart crop to subject
-./scripts/remove_background photo.jpg --crop
-
-# Smart crop with 20px padding
-./scripts/remove_background photo.jpg --crop --padding 20
-
-# Custom output path
-./scripts/remove_background photo.jpg -o transparent.png
-
-# Force CPU (if MPS has issues)
-./scripts/remove_background photo.jpg --device cpu
-
-# Human-readable output
-./scripts/remove_background photo.jpg --format table
+./scripts/remove_background photo.jpg -c -p 20 -o cutout.png
+./scripts/remove_background photo.jpg -d cpu -f table
 ```
-
-## Output Format
-
-JSON (default):
-```json
-{
-  "input": "photo.jpg",
-  "output": "photo_nobg.png",
-  "device": "mps",
-  "original_size": [1920, 1080],
-  "output_size": [800, 600],
-  "cropped": true,
-  "crop_box": [120, 80, 920, 680],
-  "model": "ZhengPeng7/BiRefNet_lite"
-}
-```
-
-## Notes
-
-- First run downloads model (~100MB), subsequent runs use cache
-- Output is always PNG with alpha channel (transparency)
-- Device auto-detection: CUDA > MPS > CPU
-- MPS (Apple Silicon) may have some op fallbacks to CPU
