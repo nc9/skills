@@ -1,0 +1,235 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "requests",
+#     "python-dotenv",
+#     "typer",
+# ]
+# ///
+"""
+Bing URL Submission Skill
+
+Submit URLs to Bing via the Webmaster URL Submission API. Uses the account-level
+Bing Webmaster Tools API key, which covers every site verified under that account
+(no IndexNow key file needed).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+from enum import Enum
+from html import unescape
+from pathlib import Path
+from typing import Annotated
+
+import requests
+import typer
+from dotenv import load_dotenv
+
+# --- Config ---
+
+API_BASE = "https://ssl.bing.com/webmaster/api.svc/json"
+MAX_BATCH = 500  # per SubmitUrlBatch call
+MAX_SITEMAP_DEPTH = 2
+USER_AGENT = "bing-submit/1.0"
+
+load_dotenv()
+
+app = typer.Typer(help="Submit URLs to Bing via the Webmaster URL Submission API")
+
+
+class OutputFormat(str, Enum):
+    json = "json"
+    table = "table"
+
+
+# --- Client ---
+
+
+def getApiKey() -> str:
+    """Resolve the Bing Webmaster Tools API key from the environment."""
+    key = os.getenv("BING_WEBMASTER_API_KEY")
+    if not key:
+        typer.echo("Error: BING_WEBMASTER_API_KEY required", err=True)
+        typer.echo(
+            "Generate one at Bing Webmaster Tools > Settings > API access", err=True
+        )
+        raise typer.Exit(1)
+    return key
+
+
+def getQuota(site_url: str) -> dict[str, int]:
+    """Remaining daily/monthly URL submission quota for a verified site."""
+    r = requests.get(
+        f"{API_BASE}/GetUrlSubmissionQuota",
+        params={"apikey": getApiKey(), "siteUrl": site_url},
+        timeout=60,
+    )
+    if not r.ok:
+        typer.echo(f"GetUrlSubmissionQuota {r.status_code}: {r.text[:300]}", err=True)
+        raise typer.Exit(1)
+    d = r.json().get("d") or {}
+    return {"daily": d.get("DailyQuota") or 0, "monthly": d.get("MonthlyQuota") or 0}
+
+
+def submitBatch(site_url: str, urls: list[str]) -> None:
+    """Submit one batch of URLs. Bing rejects the whole batch if anything is off."""
+    r = requests.post(
+        f"{API_BASE}/SubmitUrlBatch",
+        params={"apikey": getApiKey()},
+        headers={"content-type": "application/json; charset=utf-8"},
+        json={"siteUrl": site_url, "urlList": urls},
+        timeout=120,
+    )
+    if not r.ok:
+        typer.echo(f"SubmitUrlBatch {r.status_code}: {r.text[:300]}", err=True)
+        raise typer.Exit(1)
+
+
+# --- URL collection ---
+
+
+def readUrlLines(text: str) -> list[str]:
+    """Keep the http(s) lines out of a blob of text."""
+    return [
+        line.strip() for line in text.splitlines() if line.strip().startswith("http")
+    ]
+
+
+def collectUrls(urls: list[str] | None, file: Path | None) -> list[str]:
+    """URLs from positional args, a file, or stdin - in that order."""
+    if file:
+        return readUrlLines(file.read_text())
+    if urls:
+        return [u for u in urls if u.startswith("http")]
+    if not sys.stdin.isatty():
+        return readUrlLines(sys.stdin.read())
+    return []
+
+
+def fetchSitemapUrls(sitemap_url: str, depth: int = 0) -> list[str]:
+    """Collect <loc> URLs, recursing one level into a <sitemapindex>."""
+    if depth > MAX_SITEMAP_DEPTH:
+        return []
+    r = requests.get(sitemap_url, headers={"user-agent": USER_AGENT}, timeout=60)
+    if not r.ok:
+        typer.echo(f"fetch {sitemap_url} -> {r.status_code}", err=True)
+        raise typer.Exit(1)
+    xml = r.text
+    # unescape: sitemap <loc> values are XML-escaped (&amp; in query strings)
+    locs = [unescape(u) for u in re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", xml)]
+    if re.search(r"<sitemapindex", xml, re.IGNORECASE):
+        nested: list[str] = []
+        for loc in locs:
+            nested.extend(fetchSitemapUrls(loc, depth + 1))
+        return nested
+    return locs
+
+
+# --- Output ---
+
+
+def emit(data: dict, format: OutputFormat) -> None:
+    if format == OutputFormat.table:
+        width = max(len(k) for k in data)
+        for key, value in data.items():
+            typer.echo(f"{key:<{width}}  {value}")
+    else:
+        typer.echo(json.dumps(data, indent=2))
+
+
+def submitUrls(site_url: str, urls: list[str], format: OutputFormat) -> None:
+    """Quota-capped submit shared by the `submit` and `sitemap` commands."""
+    if not urls:
+        emit({"site_url": site_url, "submitted": 0, "note": "no URLs"}, format)
+        return
+
+    # Cap to remaining daily/monthly quota - Bing rejects the WHOLE batch when it
+    # exceeds quota, so oversubmitting wastes the run.
+    deferred = 0
+    try:
+        quota = getQuota(site_url)
+        remaining = min(quota["daily"], quota["monthly"])
+        if len(urls) > remaining:
+            deferred = len(urls) - remaining
+            urls = urls[:remaining]
+            typer.echo(
+                f"[bing] quota {quota['daily']}/day {quota['monthly']}/month"
+                f" - deferring {deferred} URL(s)",
+                err=True,
+            )
+    except (typer.Exit, requests.RequestException, ValueError):
+        # A failed quota lookup is non-fatal; let SubmitUrlBatch arbitrate.
+        pass
+
+    submitted = 0
+    for i in range(0, len(urls), MAX_BATCH):
+        batch = urls[i : i + MAX_BATCH]
+        submitBatch(site_url, batch)
+        submitted += len(batch)
+
+    emit({"site_url": site_url, "submitted": submitted, "deferred": deferred}, format)
+
+
+# --- Commands ---
+
+
+@app.command("submit")
+def submitCmd(
+    site_url: Annotated[
+        str, typer.Argument(help="Site URL, must match the BWT property")
+    ],
+    urls: Annotated[list[str] | None, typer.Argument(help="URLs to submit")] = None,
+    file: Annotated[
+        Path | None, typer.Option("--file", help="File with URLs, one per line")
+    ] = None,
+    format: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """Submit explicit URLs (positional args, --file, or stdin)."""
+    submitUrls(site_url, collectUrls(urls, file), format)
+
+
+@app.command("sitemap")
+def sitemapCmd(
+    domain: Annotated[str, typer.Argument(help="Bare domain, e.g. example.com")],
+    format: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """Submit every URL in a site's sitemap.xml (follows sitemap indexes)."""
+    host = re.sub(r"^https?://", "", domain).split("/")[0]
+    site_url = f"https://{host}"
+    urls = fetchSitemapUrls(f"{site_url}/sitemap.xml")
+    typer.echo(f"[bing] {host}: {len(urls)} URL(s) from sitemap", err=True)
+    submitUrls(site_url, urls, format)
+
+
+@app.command("quota")
+def quotaCmd(
+    site_url: Annotated[
+        str, typer.Argument(help="Site URL, must match the BWT property")
+    ],
+    format: Annotated[
+        OutputFormat, typer.Option("--format", "-f", help="Output format")
+    ] = OutputFormat.json,
+) -> None:
+    """Show remaining daily and monthly submission quota."""
+    quota = getQuota(site_url)
+    emit(
+        {
+            "site_url": site_url,
+            "daily_quota": quota["daily"],
+            "monthly_quota": quota["monthly"],
+        },
+        format,
+    )
+
+
+if __name__ == "__main__":
+    app()

@@ -36,6 +36,16 @@ Or add to `.env` in your project root:
 GOOGLE_INDEXING_KEY_FILE=/path/to/service-account-key.json
 ```
 
+### 4. (Optional) Bing Webmaster Tools
+
+For the Bing URL Submission API, generate an account-level key at Bing Webmaster Tools >
+**Settings** > **API access**, and set it. It covers every site verified under that
+account; unverified sites return `NotAuthorized`.
+
+```bash
+BING_WEBMASTER_API_KEY=your_api_key_here
+```
+
 ## Installation
 
 ```bash
@@ -72,6 +82,17 @@ npx claude-plugins install @nc9/skills/google-indexing --user
 ```bash
 ./scripts/google_indexing quota
 ```
+
+### Bing URL Submission
+
+```bash
+./scripts/bing_submit sitemap example.com                  # every URL in sitemap.xml
+./scripts/bing_submit submit https://example.com https://example.com/new-post
+./scripts/bing_submit quota https://example.com
+```
+
+Bing rejects a batch wholesale if it exceeds the remaining quota, so `bing_submit`
+pre-checks quota and reports the overflow as `"deferred": N`.
 
 ### Bulk URL Input
 
