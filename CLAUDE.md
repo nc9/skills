@@ -110,19 +110,4 @@ ln -s /path/to/skills/<skill-name> ~/.claude/skills/<skill-name>
 
 ## Existing Skills
 
-| Skill | Purpose | API |
-|-------|---------|-----|
-| `ai-writing-detector` | Detect AI-generated text & plagiarism | [Pangram](https://pangram.cello.so/xGzUNafMfjD) |
-| `browserbase` | Fetch pages with proxy + captcha solving | [Browserbase](https://browserbase.com/) |
-| `generate-favicon` | Favicon/icon set generation | Pillow (local) |
-| `generate-image` | Image generation & editing | OpenRouter (Gemini) |
-| `google-indexing` | Submit/remove URLs for Google indexing | Google Indexing API |
-| `google-search` | Google search (web, news, images, videos, places, shopping, scholar, patents) | [Serper](https://serper.dev/) |
-| `google-search-console` | Search performance & indexing status | Google Search Console API |
-| `keyword-research` | SEO keyword data | DataForSEO |
-| `optimize-image-web` | WebP conversion + resizing | Pillow (local) |
-| `parallel-deep-research` | Deep intelligence reports | Parallel AI |
-| `parallel-web-search` | Agentic web search | Parallel AI |
-| `remove-background` | AI background removal | BiRefNet (local) |
-| `review` | AI code review via Codex | OpenAI Codex |
-| `wayback` | Search & fetch archived web pages | Wayback Machine (free) |
+See the tables in [README.md](./README.md) (single source of truth; update it when adding or removing a skill).
