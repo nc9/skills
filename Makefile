@@ -6,6 +6,9 @@ SKILL_DIRS := $(shell find . -maxdepth 2 -name 'SKILL.md' -exec dirname {} \;)
 
 link:
 	@mkdir -p $(AGENTS_DIR) $(CLAUDE_DIR)
+	@for dir in $(AGENTS_DIR) $(CLAUDE_DIR); do \
+		find $$dir -maxdepth 1 -type l ! -exec test -e {} \; -print -delete | sed 's/^/Pruned dead link: /'; \
+	done
 	@for skill in $(SKILL_DIRS); do \
 		name=$$(basename $$skill); \
 		src="$$(pwd)/$$name"; \

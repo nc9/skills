@@ -87,19 +87,17 @@ npx skills add https://github.com/nc9/skills/tree/main/generate-image
 
 | Skill | Description | API |
 |---|---|---|
-| [generate-image](./generate-image/) | Image generation & editing (OpenAI gpt-image-2 default, Gemini 3.1 Flash alt) | [OpenAI](https://platform.openai.com/) + [OpenRouter](https://openrouter.ai/) |
+| [generate-image](./generate-image/) | Image generation & editing (OpenAI gpt-image-2.5 default, Gemini 3.1 Flash Image alt) | [OpenAI](https://platform.openai.com/) + [OpenRouter](https://openrouter.ai/) |
 | [remove-background](./remove-background/) | AI background removal using BiRefNet | None (local) |
-| [optimize-image-web](./optimize-image-web/) | WebP conversion, favicons, social cards, thumbnails | None (local) |
-| [generate-favicon](./generate-favicon/) | Favicon / icon set generation | None (local) |
+| [generate-favicon](./generate-favicon/) | Favicon / icon set + webmanifest generation | None (local) |
+| [animate-svg](./animate-svg/) | Looping animated SVGs via Gemini Pro | [OpenRouter](https://openrouter.ai/) |
 
 ### Search & research
 
 | Skill | Description | API |
 |---|---|---|
 | [google-search](./google-search/) | Google search — web, news, images, videos, places, shopping, scholar, patents | [Serper](https://serper.dev/) |
-| [parallel-web-search](./parallel-web-search/) | Agentic web search with citations | [Parallel AI](https://parallel.ai/) |
-| [parallel-deep-research](./parallel-deep-research/) | Deep research reports with multi-source synthesis | [Parallel AI](https://parallel.ai/) |
-| [wayback](./wayback/) | Search & fetch archived web pages | Wayback Machine (free) |
+| [parallel](./parallel/) | Cited web search with domain filters + externally-run deep research reports | [Parallel AI](https://parallel.ai/) |
 | [browserbase](./browserbase/) | Fetch pages through proxy + captcha solving | [Browserbase](https://browserbase.com/) |
 
 ### SEO & indexing
@@ -107,40 +105,40 @@ npx skills add https://github.com/nc9/skills/tree/main/generate-image
 | Skill | Description | API |
 |---|---|---|
 | [keyword-research](./keyword-research/) | Keyword ideas, volume, CPC, competition | [DataForSEO](https://dataforseo.com/) |
-| [google-indexing](./google-indexing/) | Submit / remove / check URL indexing | [Google Cloud](https://console.cloud.google.com/) (free) |
+| [google-indexing](./google-indexing/) | Submit / remove / check URL indexing (Google + Bing) | [Google Cloud](https://console.cloud.google.com/) (free) |
 | [google-search-console](./google-search-console/) | Search analytics, URL inspection, sitemaps | [Google Cloud](https://console.cloud.google.com/) (free) |
 
 ### Writing & content
 
 | Skill | Description | API |
 |---|---|---|
-| [write-content](./write-content/) | Blog posts, articles, content pieces with research + humanization | — |
-| [humanizer](./humanizer/) | Remove signs of AI writing — 65 patterns, narrative-first strategy | None (local) |
+| [humanizer](./humanizer/) | Remove signs of AI writing — 65 patterns, measured detector results, publish gate | None (local) |
 | [ai-writing-detector](./ai-writing-detector/) | Detect AI-generated text / plagiarism | [Pangram](https://pangram.cello.so/) |
 
 ### Engineering workflow
 
 | Skill | Description | API |
 |---|---|---|
+| [clickhouse](./clickhouse/) | Operate & evolve ClickHouse — forensics, log retention, compression, MergeTree design, zero-downtime rebuilds | None (local) |
 | [commit](./commit/) | Pre-commit workflow — test, lint, format, type-check, atomic commits | None (local) |
 | [review](./review/) | Structured code review via OpenAI Codex MCP — 0-5 score, prioritized issues with file:line citations, verification pass; context from GitHub/Linear/Sentry + plans + conversation | [OpenAI](https://platform.openai.com/) (Codex MCP or CLI) |
 | [geist-design](./geist-design/) | Modern dev-tool design aesthetic — the Vercel / Linear / Stripe / Resend visual language for premium UI | None (local) |
 | [web-ui](./web-ui/) | Principles for building great web app interfaces | None (local) |
-| [wordpress-to-astro](./wordpress-to-astro/) | Migrate a WordPress site (Elementor + Gravity Forms + Rank Math) to static Astro + MDX on Cloudflare Pages, with Pages Functions + Resend contact form, JSON-LD, and a Search Console refinement loop | None (local; uses other skills) |
+| [agent-browser](./agent-browser/) | Browser control via the agent-browser CLI — attach to an existing Chrome over CDP | None (local) |
 
 ## Configuration
 
 Skills requiring API keys read from `.env` or environment variables. Set them per project or globally:
 
 ```bash
-# generate-image (OpenAI SDK direct for gpt-image-2)
+# generate-image, animate-svg (OpenAI SDK direct for gpt-image)
 OPENAI_API_KEY=sk-...
-OPENROUTER_API_KEY=sk-or-...          # only if using Gemini via OpenRouter
+OPENROUTER_API_KEY=sk-or-...          # Gemini image + animate-svg
 
 # google-search
 SERPER_API_KEY=...
 
-# parallel-web-search, parallel-deep-research
+# parallel
 PARALLEL_API_KEY=...
 
 # keyword-research
@@ -149,6 +147,7 @@ DATAFORSEO_PASSWORD=your_api_password
 
 # google-indexing, google-search-console
 GOOGLE_INDEXING_KEY_FILE=/path/to/service-account-key.json
+BING_WEBMASTER_API_KEY=...            # google-indexing Bing submission only
 
 # ai-writing-detector
 PANGRAM_API_KEY=...
