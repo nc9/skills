@@ -1,6 +1,7 @@
 # Generate Image
 
-AI image generation and editing using Google Gemini via OpenRouter.
+Image generation and editing. Routes by model: `gpt-image-*` goes to the OpenAI Images
+API via the OpenAI SDK, `google/gemini-*` goes to OpenRouter.
 
 ## Installation
 
@@ -14,54 +15,25 @@ npx claude-plugins install @nc9/skills/generate-image --user
 
 ## Setup
 
-### 1. Get API Key
-
-Get an OpenRouter API key from [openrouter.ai/keys](https://openrouter.ai/keys)
-
-### 2. Configure Environment
-
-Create a `.env` file in your project root:
+Set the key for whichever route you use (`.env` in the project root, or exported):
 
 ```bash
-OPENROUTER_API_KEY=your_api_key_here
-```
-
-Or set globally:
-
-```bash
-export OPENROUTER_API_KEY=your_api_key_here
+OPENAI_API_KEY=...       # default gpt-image-* models — https://platform.openai.com/api-keys
+OPENROUTER_API_KEY=...   # google/gemini-* models — https://openrouter.ai/keys
 ```
 
 ## Usage
 
 ```bash
-# Generate image
-./scripts/generate_image "A sunset over mountains"
+# Generate (default model: gpt-image-2.5-sunburst)
+./scripts/generate_image "A sunset over mountains" -o sunset.png
 
-# Edit existing image
-./scripts/generate_image "Make the sky purple" --input photo.jpg
+# Edit an existing image
+./scripts/generate_image "Make the sky purple" -i photo.jpg -o edited.png
 
-# Custom output path
-./scripts/generate_image "Abstract art" --output artwork.png
+# Switch to Gemini for exact wide aspects, 2K/4K output, or mascot consistency
+./scripts/generate_image "Ultra-wide banner" -m google/gemini-3.1-flash-image -a 8:1
 ```
 
-## Model
-
-**Model**: `google/gemini-3-pro-image-preview` - High quality, supports generation + editing
-
-## Options
-
-| Option | Description |
-|--------|-------------|
-| `--input, -i` | Input image for editing |
-| `--output, -o` | Output file path (default: generated_image.png) |
-| `--aspect-ratio, -a` | Aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4, 3:2, 2:3) |
-| `--api-key` | API key (overrides .env) |
-
-## When to Use
-
-- Photos and photorealistic images
-- Artistic illustrations and artwork
-- Concept art and visual concepts
-- Image editing and modifications
-
+See [SKILL.md](./SKILL.md) for the model capability matrix, routing rules, the
+transparent-background workflow, and failure modes.
