@@ -1,13 +1,13 @@
 ---
 name: app-ui
-description: Build or redesign an admin, dashboard, internal tool, CRM, back office, data app or app shell as a keyboard-first, Linear/Attio-style application. Covers the sidebar shell, views as sidebar children, full record pages (no drawers), Gmail-style threads, EventFeed, dashboard stat tiles and cards, funnels, forms, structured data in UI, a Gmail-plus-vim keymap, a porting procedure and a review checklist. Use on "admin redesign", "dashboard", "internal tool", "CRM", "app shell", "Linear style", "Attio style", "keyboard-first", or when porting an old tabbed dashboard.
+description: Build or redesign an admin, dashboard, internal tool, CRM, back office, data app or app shell as a keyboard-first, Linear/Attio-style application. Covers the sidebar shell, views as sidebar children, full record pages (no drawers), Gmail-style threads, EventFeed, dashboard stat tiles and cards, funnels, forms, structured data in UI, instant feedback on every action, density and a global semantic label system, local-first data, an installable PWA with notifications, a Gmail-plus-vim keymap, a porting procedure and a review checklist. Use on "admin redesign", "dashboard", "internal tool", "CRM", "app shell", "Linear style", "Attio style", "keyboard-first", or when porting an old tabbed dashboard.
 ---
 
 Distilled from a real redesign of a data-heavy admin (reference implementation, private). Product-neutral: apply it to any CRUD, CRM, ops or analytics app. These are rules, not suggestions; deviate only when the user says so.
 
 Scope split: this skill is the **app model** (shell, navigation, records, lists, dashboards, keys). Component and motion craft (focus, forms, transitions, accessibility details) is in `web-ui`. Chart colour and marks are in `dataviz`. Design tokens, focus rings and the visual floor are in `hallmark`. Do not restate those here; load them when you reach that layer.
 
-Full keymap table: `references/keymap.md`.
+References: `references/keymap.md` (full keymap), `references/semantic-labels.md` (tone, icon and label vocabulary), `references/pwa-local-first.md` (local-first data, install, service worker, notifications).
 
 ## Principles
 
@@ -20,6 +20,24 @@ Full keymap table: `references/keymap.md`.
 7. **Never one more title.** The header breadcrumb is the page title. No in-page H1, no duplicate headings.
 8. **Reversible by default.** Delete means Trash. Send means undo window. Every mutation has Undo.
 9. **Never invent a number.** No source means a dash or a "Sample" chip, never a plausible fake.
+10. **Instant.** Every click answers in the same frame; after one load the app runs from a local copy.
+
+## Design concepts
+
+These two decide whether the app feels like a professional tool. Apply them before any screen.
+
+**Information density.** A dashboard is a working surface, not a landing page.
+- Compact rows (32 to 40px), a small type scale (12 / 13 / 14 / 16 / 20, UI text 13px, meta 12px), mono tabular numbers, hairline panels, 4px spacing grid, no decorative whitespace, no hero areas, no illustrations in working views. Controls are 28 or 32px.
+- Show more per screen before adding scroll or pagination: facts rows in headers, inline metadata in list rows (snippet, count, chips), sparklines in tiles.
+- **Density is a user setting:** comfortable and compact (`data-density` on `<html>`), set in the user menu and settings, applied before first paint. Row height, view-bar height, UI text size, rail row height and card padding are CSS variables; components read the variables and never fixed pixel sizes.
+- Density is not clutter: one idea per screen, aligned columns, quiet colour, and every number right-aligned and tabular so columns scan.
+
+**Global semantic labels, colours and icons.** One vocabulary for status, stage, type, plan, grade and source, defined once.
+- **A semantic value has exactly one tone and one icon everywhere:** lists, records, dashboard cards, sidebar counts, badges, charts, command menu. Users identify things by colour at a glance, so the same word must never be green on one page and amber on another.
+- Define it as ONE token map (`STATUS_TONE[value] -> { tone, icon, label }`) over a fixed tone set (green, blue, violet, amber, red, grey; soft background plus readable foreground tokens, light and dark, contrast-checked). Never an ad-hoc colour per page; a test fails when a value in data has no entry.
+- The text still says the value (colour is for scanning, never alone). Good, bad, waiting and neutral map to green, red, amber and grey consistently across every vocabulary; deltas follow the same rule.
+- **Same entity type, same icon everywhere** (sidebar, command menu, header, rows, timeline); a real identity (favicon, avatar) beats the generic icon.
+- Full spec and how to apply it to an existing app: `references/semantic-labels.md`.
 
 ## App shell
 
@@ -232,6 +250,17 @@ Rows have fixed heights (`grid-template-rows` with no `auto` rows). A missing pa
 - Destructive or outward-facing actions (send email, bulk change, billing) show the exact effect first and confirm; the dialog confirms with `⌘↵` only once open and focused, never from a page-level shortcut.
 - Mutations from old flows keep their guards, confirms and copy byte-identical when restyled.
 
+## Instant feedback on every action
+
+Hard rule: the user never waits for the app to acknowledge them. A click that appears ignored is a bug.
+
+- **Submit:** on press the button shows a spinner in the same frame and the whole form disables (inputs, secondary buttons, the submit shortcut), so a double submit is impossible. Then either success (a toast with Undo where reversible, or the optimistic result already in place) or failure (an inline error beside the field or at the top of the form, form re-enabled, text kept). A button never keeps its normal look while a request is in flight and never stays spinning after it ends.
+- **Navigation:** clicking another section, view, record or range paints the target's layout-matched **skeleton or cached data in the same frame**, and the URL changes at once. Never a blank page, a frozen old view, or a click that does nothing for seconds because a loader is running. Loaders must not block the route commit.
+- **Full-page loading screens exist only for the very first load of the app** (a cold start with no local data), once, branded, with a progress line. Everything after is inline skeletons or cached data.
+- **Every control gives immediate visual feedback:** pressed state on press, pending state while working (spinner inside the control, disabled), selected/checked/toggled state flips at once. Toggles, checkboxes, pins, stars, status changes and drag drops are optimistic: apply locally, send, roll back visibly on failure with the reason.
+- Long work (an export, a bulk change) shows progress in a toast that survives navigation, never in a blocked page.
+- Measure it: click-to-commit under 100ms warm, zero navigation-blocking requests on a click-through of every sidebar item. Details in `references/pwa-local-first.md`.
+
 ## Onboarding and tours
 
 Three separate surfaces, none of which blocks the app: a **setup flow** (get the product connected), a **guided tour** (learn where things are), and a quiet **get-started card**. Each has a permanent entry point in the sidebar footer, so skipping is never a dead end.
@@ -266,6 +295,19 @@ Three separate surfaces, none of which blocks the app: a **setup flow** (get the
 - **Keyboard:** Esc skip, ArrowRight/Enter next (Enter on the last step presses its primary button), ArrowLeft back. Ignored when a modifier is held, when typing in a field, and Enter on a focused button or link goes to that element. Tab is trapped in the card; focus is saved on open and restored on close; focus moves to the card on every step.
 - A tour or setup URL param only opens the UI; it never triggers a mutation.
 
+## Installable, offline and local-first
+
+Makes the app pleasant for people who keep it open all day. Full specs, with the numbers: `references/pwa-local-first.md`. Build in this order.
+
+1. **Local-first data.**
+   - Keep the app's data in the browser: a query cache with per-dataset freshness (6h for daily or closed data, 5 min for today, live for lists), persisted per user to IndexedDB, plus client collections for the hot entities (inbox items, notifications) synced by a live channel with a poll fallback.
+   - Render from the local copy instantly and revalidate behind it; swap in updates progressively with no layout jump.
+   - One batched bootstrap on the first cold load seeds the cache under the same keys the pages use. Prefetch on hover or focus.
+   - Wipe everything per user on sign-out and on 401/403. The server still authorises every read. **The service worker never caches data responses.**
+2. **Installable.** A manifest scoped to the app (id, start_url, scope, standalone with window-controls-overlay, 192/512, maskable and monochrome badge icons, shortcuts, `launch_handler` navigate-existing, screenshots). "Install app" in the bottom-left account menu plus one dismissible in-context card; `beforeinstallprompt` on Chromium, an Add to Home Screen sheet on iOS; hide all install UI when standalone. Unread count in the app badge, the title prefix and a favicon dot.
+3. **Service worker.** Precache the app shell, assets cache-first, navigations network-first with an offline shell. Offline banner ("Showing what you had at 10:42"), server-only actions disabled with a tooltip, offline mutations queued and replayed in order. The update flow is the same prompt as auto-refresh: "A new version is ready. Reload", `skipWaiting` only on click.
+4. **Browser notifications.** Ask in two stages: a soft in-app card at a moment of value ("Get notified when a new lead arrives") with "Not now" respected and re-asked rarely; only after a yes the native permission request and push subscription. Push only for important events, grouped by tag, with Open and Mark read actions, click-through reusing the open window, and the badge kept in step. iOS push needs the app installed (16.4+) and the ask says so.
+
 ## Structured data in UI
 
 - **A typed field registry** (one constant) is the single source for the API validator, the MCP/agent output schema, the filter builder and the rail editor. Every field is optional with a type (enum, string[], number, bool, object[], country code). Adding a field is a registry edit, not a migration.
@@ -282,11 +324,12 @@ Three separate surfaces, none of which blocks the app: a **setup flow** (get the
 1. **Inventory.** List every page, tab, card, filter and action of the old app, plus data hooks and the routes that must keep working. Note dead pages: delete them, do not port them.
 2. **Map** each item to a section or sidebar view: tabs become sidebar children; separate concerns become separate sections (not tabs of one page); duplicated headline numbers are shown once.
 3. **Carry over the lifecycle surfaces:** onboarding or setup flow, tour (re-anchor every `data-tour` id to the new nav and re-run the anchor test), the sidebar footer (docs, support, version, auto-refresh), and the tenant and child switchers with their URL scope. Dropping these in a redesign is the usual loss.
-4. **List what to delete:** tab strips, filter-chip rows, back links and arrows, in-page H1s, duplicate titles, drawers, peeks, inline expansion, checkbox columns with no bulk action, tables of events, nested boxes, per-page containers.
-5. **Build the shell and kit first:** tokens, shell, registry and hotkeys, nav tree, DataTable, ViewBar, RecordPage, Thread, EventFeed, Panel, StatTile, charts. Pages are then thin. Ship the version watch and stale-chunk recovery with the shell, not later.
-6. **Port section by section.** Reuse data hooks; wrap unconverted pages in the shell (generic keys only) so nothing blocks the rollout. Restyle mutation UIs without changing their logic or copy. Add redirects and a test table for every old URL.
-7. **Click through in a real browser** at 1280 and 1440px wide, light and dark, compact and comfortable, with the sidebar in full and rail modes. Use only the keyboard for one full pass. Check browser Back from a record lands on the exact row.
-8. **Run the review checklist** below and fix before shipping.
+4. **Audit feel:** list every place a click waits (blocking loaders, forms that stay enabled, spinners over a frozen page, full-page loaders after first load) and every ad-hoc colour or duplicate label; plan the cache, bootstrap, skeletons and the single tone/icon map before porting pages.
+5. **List what to delete:** tab strips, filter-chip rows, back links and arrows, in-page H1s, duplicate titles, drawers, peeks, inline expansion, checkbox columns with no bulk action, tables of events, nested boxes, per-page containers.
+6. **Build the shell and kit first:** tokens, shell, registry and hotkeys, nav tree, DataTable, ViewBar, RecordPage, Thread, EventFeed, Panel, StatTile, charts. Pages are then thin. Ship the version watch and stale-chunk recovery with the shell, not later; then the data layer and, if wanted, the manifest and service worker.
+7. **Port section by section.** Reuse data hooks; wrap unconverted pages in the shell (generic keys only) so nothing blocks the rollout. Restyle mutation UIs without changing their logic or copy. Add redirects and a test table for every old URL.
+8. **Click through in a real browser** at 1280 and 1440px wide, light and dark, compact and comfortable, with the sidebar in full and rail modes. Use only the keyboard for one full pass, record a Performance trace of a click-through of every sidebar item, and test offline and installed modes. Check browser Back from a record lands on the exact row.
+9. **Run the review checklist** below and fix before shipping.
 
 ## Review checklist
 
@@ -319,6 +362,20 @@ Three separate surfaces, none of which blocks the app: a **setup flow** (get the
 - [ ] Facts are typed registry fields; notes hold commentary only
 - [ ] Group membership is many-to-many; no status shown on the entity that belongs to the relation
 - [ ] Dark theme and both densities pass a contrast and layout check
+- [ ] Density is dense by default: compact rows, mono tabular numbers, hairlines, no decorative whitespace; a density setting works and is applied before first paint
+- [ ] Every status, stage, type, plan, grade and source comes from the one tone/icon map; the same value has the same tone and icon on every page; no raw colours in feature code
+- [ ] Colour is never the only carrier of a status (a label or icon accompanies it); same entity type has the same icon everywhere
+- [ ] Submit: spinner in the same frame, whole form disabled, no double submit, success toast with Undo or inline error with the form re-enabled and text kept
+- [ ] Every nav click changes the URL and paints a skeleton or cached data in the same frame (under 100ms); no blank or frozen page; loaders never block the route commit
+- [ ] Full-page loader only on the cold first load; warm reloads skip it
+- [ ] Every button and control shows pressed and pending states; toggles and status changes are optimistic with visible rollback
+- [ ] Reads go through one cache with per-dataset freshness, persisted per user, wiped on sign-out and 401/403; no fetch in effects; the service worker caches no data
+- [ ] Hot lists live in collections synced by a live channel (reconnect with backoff and jitter, resync on reconnect, poll fallback); badges, bell and lists agree
+- [ ] A click-through trace proves zero navigation-blocking requests and sub-100ms warm paints
+- [ ] Manifest valid and installable; Install app in the account menu and one dismissible card; install UI hidden when standalone; iOS sheet explains push needs install
+- [ ] Service worker: shell precache, navigations network-first with offline shell, offline banner, server-only actions disabled offline, offline mutations queued and replayed
+- [ ] Notifications use the two-stage ask (soft card, then native prompt after yes); "Not now" respected; push has actions and reuses the open window; badge, title and favicon dot track unread
+- [ ] Sign-out wipes caches, IndexedDB and the push subscription
 - [ ] One switcher per level at the top, each scoping everything below; scope is in the URL and persists
 - [ ] Switchers open by key, filter by typing, list recent and pinned first, and invalidate tenant-scoped queries on switch
 - [ ] Sidebar footer has Docs, Support, version label and the profile menu; Setup and Tour re-openable at any time
@@ -351,6 +408,13 @@ Three separate surfaces, none of which blocks the app: a **setup flow** (get the
 | Chart measured on mount, 0 wide after load | `useSize` re-attaches after every render |
 | Stack as a free-text note | Registry field, filterable |
 | "Disqualified" chip on a company | Membership state in a Cohorts section |
+| Button looks idle while the request runs, form stays editable | Spinner in the same frame, whole form disabled |
+| Nav click waits seconds on a loader before anything changes | URL changes and skeleton or cached data paints at once |
+| Full-page spinner on every page | Full-page loader once on cold start only |
+| Fetch in `useEffect` on every page view | Cached query, persisted per user, revalidate in background |
+| Service worker caches API responses | Shell only; data from the per-user local store |
+| Native notification prompt on first visit | Soft in-app ask, native prompt only after yes |
+| Same status amber on one page and orange on another | One tone/icon map for every vocabulary |
 | Hidden shortcut | Hint, `?` sheet, ⌘-hold overlay from one registry |
 | `⌘\` or `⌘D` as an app shortcut | A key the OS and password managers don't own |
 | Destructive keys on unconverted pages | Navigation and focus only |
