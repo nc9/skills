@@ -40,8 +40,8 @@ sidebar 232px (rail 52px) | header 44px: breadcrumb ......... [⌘K] [?]
 - **CountBadge:** an 18px tall, fully rounded pill, 11px tabular figures, `99+` cap, nothing at 0 or while loading. Tone: unread and attention counts are filled with the primary colour; every other count is a grey tinted pill. Never bare grey digits. In rail mode the pill sits on the icon corner. The parent shows the total, each child its own count. Counts come from a `CountSource` the shell reads, so the shell never imports a feature's internals.
 - **Rail mode:** `⌘B` toggles 232px and 52px. Also a menu below ~960px. Check `⌘\` is never used (password managers own it).
 - **Search lives only in ⌘K** (header trigger). No search box in the sidebar.
-- **Footer:** the user menu. Avatar plus name; menu holds theme (system/light/dark), density (comfortable/compact), timezone (a short list plus "More"), Settings, Keyboard shortcuts, Sign out. User-level settings live in one scrolling page, no tabs.
-- **Workspace switcher** (when multi-tenant) is the sidebar header: initials, check on the active one, `g w`. Routes carry the workspace (`/w/<ws>/...`); in-app code uses canonical paths and a thin link/navigate wrapper translates at the edge.
+- **Footer:** resources, version and the user menu (full spec in "Sidebar footer"). The user menu is avatar plus name; menu holds theme (system/light/dark), density (comfortable/compact), timezone (a short list plus "More"), Settings, Keyboard shortcuts, Sign out. User-level settings live in one scrolling page, no tabs.
+- **Switchers** live at the top: see "Context switching". For a workspace-only app the switcher is the sidebar header: initials, check on the active one, `g w`. Routes carry the workspace (`/w/<ws>/...`); in-app code uses canonical paths and a thin link/navigate wrapper translates at the edge.
 
 **Header breadcrumb is the page title**
 - Format: `workspace › section › view`. Earlier segments are muted links, the last is foreground weight 500. Always shown, also when the sidebar is collapsed. The view segment comes from the sidebar tree.
@@ -51,6 +51,46 @@ sidebar 232px (rail 52px) | header 44px: breadcrumb ......... [⌘K] [?]
 **One gutter, one width.** Every page uses the same horizontal padding and the same max width (or full width for tables). No page invents its own container.
 
 **Tokens and density.** Radius 4/6/8, hairline borders, warm or neutral surfaces, one primary (brand) colour for primary action, selection and focus; everything else neutral. Chip tints are a small fixed set mapped from status in one place. Row height, view-bar height and UI text size come from CSS variables driven by a `data-density` attribute (comfortable 40px rows, compact 32px). Components read the variables, never fixed pixel sizes. Dark theme is a token swap on `:root[data-theme=dark]`; verify 4.5:1 for text and chips with a script, not by eye. Prefs (theme, density, clock, hint delay) sit in one typed store behind an interface so a server table can replace localStorage, applied before first paint.
+
+## Context switching (org -> project/site)
+
+For a topology of tenant -> child entity (organisation -> projects, websites, workspaces), the switchers are the **top of the shell**, one per level, and each filters everything below it.
+
+- **One switcher per level, in the header, left to right:** brand mark (links home), tenant switcher, child switcher. Separate controls, never one merged dropdown. Each shows the current name (with favicon or avatar), a caret, and truncates long names with a tooltip.
+- **Each level scopes the levels below it.** Switching the tenant reloads the child list, the sidebar tree, counts and every page; switching the child scopes the sidebar and pages to that child. Page content never shows data from outside the current scope.
+- **The child switcher only appears when a child is in scope** (inside a child's pages). On tenant-level pages there is only the tenant switcher. Hide the child switcher on narrow screens, and fold both into the sidebar header.
+- **Selection persists and lives in the URL.** The tenant (and child id) are path segments (`/<tenant>/child/<id>/...`), so reload, Back and a copied link restore scope. The last-used tenant is also stored (server-side preference or `localStorage`) so `/` lands in it. An unknown or forbidden slug redirects to the last valid one, never shows another tenant's data. Switching lands on the current section's list, never on a record id from the old scope.
+- **Switching a tenant invalidates every cached query that is tenant-scoped** (children, usage, counts, saved views, pins), then navigates. Do not leave the previous tenant's rows on screen while loading.
+- **Menu content:** the current item checked; a **Recent** group first (children sorted by last activity, capped at ~10) and **Pinned** items above it; a search field once the list is longer than ~8; a score or status chip per row where one exists; footer actions "Create <tenant>" / "Add <child>" and "All <children>" back to the full list. Cap the list, never render hundreds.
+- **Keyboard:** each switcher opens with a key (for example `g w` for the tenant, `g s` for the child, or a numbered `⌘1`..`⌘9` for pinned items), arrows move, Enter selects, Esc closes, typing filters. Also expose "Switch to <name>" in ⌘K. Register them in the app registry like any other binding and show the hint on the trigger while ⌘ is held.
+- **Pin and recent** are user prefs (ids, per tenant); a pin to an item that no longer exists is hidden, not an error.
+- **Admin variant:** an operator app has no child level. It has only a workspace or tenant switcher at the top of the sidebar (initials, a check on the active one, rail shows the initial, `g w`). Which modules a workspace shows is configuration; a workspace without a data source runs on sample data and says "Sample". The ids and slugs are reserved so a section name can never be a slug.
+- Reference implementation note: the customer dashboard ships tenant and child popovers with recents and an "all" link; the keyboard opening, pins and the search field above are required additions, not yet built there.
+
+## Sidebar footer: profile, docs, support, version, auto-refresh
+
+Bottom of the sidebar, top to bottom:
+
+1. **Resources block** (small, hairline above): permanent entry points that exist whatever the onboarding state.
+   - Setup (opens the setup flow; a quiet sparkle or dot while the user still has not connected what the product needs, with an `sr-only` explanation)
+   - Take the tour (re-opens the tour at any time)
+   - Docs (external link, new tab, `rel="noopener noreferrer"`, external-link icon)
+   - Support (help or contact page inside the app)
+   Use real links and buttons with visible focus, a key and hint like every other action. Operator apps can drop Setup and Tour but keep Docs and Support.
+2. **Meta line:** system status pill (when the product has one), the **version label**, and small links (Changelog, Privacy, Terms).
+3. **Profile and user menu** at the very bottom-left: avatar plus name (avatar only in rail mode), opening the menu described under App shell. The profile is always the last thing so it never moves.
+
+**Version label.** Shows the human version (`1.4.2`, or `1.4.2-dev7` in development) with the exact build sha in the tooltip and a `data-build-sha` attribute so support and error reports can quote it. It links to the changelog. It turns the destructive colour and its tooltip says "A newer version is live: refresh to load it" when the tab is stale. Never derive staleness by parsing the version string (`dev10` sorts before `dev2`); compare build ids.
+
+**App auto-refresh is required for every SPA dashboard.** A tab left open across a deploy keeps running old code, and its lazy chunks no longer exist, so a route dies with a "failed to fetch dynamically imported module" error. Build all of this:
+
+1. **Build id.** Every build learns the commit sha it was built from. The client bundle must not contain it as a constant (that would change every chunk hash on every commit); put it in a `<meta name="build-sha">` in `index.html` (or the SSR root head) and read it from there. Server environments may use a build-time define.
+2. **`/version.json`.** The client build writes `{ "sha": "..." }` beside its assets, served `Cache-Control: no-store` (a `_headers` rule on static hosts). A missing file, a non-JSON answer or an SPA fallback page counts as "unknown", never as "new version".
+3. **Watch.** One page-wide watch, shared by every component that shows the version, started once in a browser and only for a real build (not dev). It checks on mount, on window focus and visibility return, and every 5 minutes while visible. At most one request at a time, at most one per ~10s for focus bursts, 10s fetch timeout, `cache: "no-store"`. An unreadable answer changes nothing (a blip must not flip the badge). `stale = deployed !== current`.
+4. **Prompt.** A small non-blocking toast at the root, `role="status"`, `aria-live="polite"`: "A new version is available. Refresh" plus a dismiss. Never auto-reload while the user might be typing or mid-flow; refresh is the user's click. The version label in the sidebar also turns red. Position it clear of the sidebar and any bottom composer.
+5. **Stale-chunk recovery.** A chunk or module that fails to load (match each browser's message: Chrome "Failed to fetch dynamically imported module", Firefox "error loading dynamically imported module", Safari "Importing a module script failed", Vite's CSS preload, `ChunkLoadError`) asks the version watch to check immediately, and the route error boundary reloads once onto the live build. Cap it: at most one automatic reload per ~30s per tab (store the timestamp in `sessionStorage`) so a chunk missing from the new build too can never loop; past the cap show the error screen with a Reload button. Do not reload if the router already did for the same failure.
+6. **Deploy side.** Keep the previous deploy's hashed assets available for 24h (copy them from the live site into the new build before upload) so old tabs can still load their chunks while they wait to refresh.
+7. **Tests:** a unit test of the watch with a fake host (focus, visibility, interval, gap, in-flight dedupe), of the stale-chunk matcher and reload cap, and of the version file writer.
 
 ## Views and navigation
 
@@ -192,6 +232,40 @@ Rows have fixed heights (`grid-template-rows` with no `auto` rows). A missing pa
 - Destructive or outward-facing actions (send email, bulk change, billing) show the exact effect first and confirm; the dialog confirms with `⌘↵` only once open and focused, never from a page-level shortcut.
 - Mutations from old flows keep their guards, confirms and copy byte-identical when restyled.
 
+## Onboarding and tours
+
+Three separate surfaces, none of which blocks the app: a **setup flow** (get the product connected), a **guided tour** (learn where things are), and a quiet **get-started card**. Each has a permanent entry point in the sidebar footer, so skipping is never a dead end.
+
+**State**
+- Onboarding state is per user, on the server (`accountIsNew`, chosen path, `doneAt`, `skipped`, `tourDoneAt`, first-connection timestamps), read through one query with a long stale time. A failed read leaves it undefined and every consumer treats that as "show nothing": the app must work without the endpoint.
+- Local flags hold first: when the tour closes write `tour-done:<userId>` to `localStorage` (swallow quota or private-mode errors), then POST the server copy best-effort. "Done" is local OR server, so another device's completion counts. Never throw from persistence.
+- The picked setup option (agent, surface) is remembered locally so reopening lands on the right step.
+
+**First-run triggers (decided once, in one gate component mounted in the tenant layout)**
+- A new, unfinished account landing on the dashboard home auto-opens the setup chooser **once** (a ref guards re-opening). Anywhere else a new unfinished account sees only the quiet get-started card, which can be dismissed for the session.
+- The gate never starts the tour. The chooser's skip closes it, records a `skipped` outcome and hands over to the tour; the tour then offers itself once.
+- Other entry points open the same flow: the sidebar items, a `?setup=agent` link from emails and banners (consumed once: dropped with `replace` so Back does not reopen it), a window event.
+- The tour marks `<html data-tour-active>` while open (and `?tour=N` counts), and the setup gate checks it so the two never stack.
+
+**Setup flow (modal, 3 steps)**
+- Steps: choose the agent or surface, connect it (a copyable snippet or one line to send), try it (a first real action). Dots show `Step n of N`; Back and Next; focus moves to the new step's heading when the control that had it is gone.
+- Connection detection polls for the first authenticated call: every 3s, every 10s after 2 minutes, stop at 15 minutes, never while the tab is hidden, and stop when the modal unmounts. On timeout show "still waiting" with help, not an error.
+- No secret, key or token appears anywhere in the flow. Every field has a visible label; `⌘↵` continues; `b` back; Esc skips; single-letter shortcuts choose a path (list them in `?`).
+
+**Tour as data**
+- A step is `{ id, title, body, anchor, showMe }`. `anchor` is a `data-tour` id on a real sidebar element (null = centred card), `showMe` the page that step shows (null = none). Steps are built from a definition list with conditions (`needs: website | noWebsite | feature`), so steps about things the user does not have are skipped and the list never shifts while navigating (derive "has a website" from the account, not from the current page).
+- **A test fails when an anchor or route stops existing in the real nav.** This is what keeps a renamed nav item from leaving the tour pointing at nothing.
+- Copy states real numbers from the same constants the product uses (costs, limits), never hand-typed.
+- First slide is a welcome (anchor null), last is a closing slide chosen from the user's state (ready, or start a first action on the surface they picked).
+
+**Behaviour**
+- Overlay: a ring around the anchor (an outline plus a huge box-shadow scrim, `pointer-events: none`) and a card as a native modal `<dialog>` with `aria-modal`, `aria-labelledby`, `aria-describedby`. The card positions itself next to the anchor, clamped to the viewport, re-measured with a `ResizeObserver` on the document and card; ignore sub-3px jitter so two near sizes cannot loop. Honour reduced motion.
+- **Page switches mid-tour:** each step's page is navigated to when the step opens (only if the pathname differs), so the target exists. The step lives in the URL as `?tour=<n>` (1-based, written with `replaceState` once the page has landed, same-origin paths only). A reload resumes at that step; browser Back and Forward restore the step stored in the entry's URL; no param means the tour is left. The origin page is kept in `sessionStorage` (validated as an in-app path) and restored on finish.
+- **Missing anchor:** if a target never mounts within ~3s, show the card centred with the text instead of a blank step.
+- **Resume, skip, finish:** Esc skips; skip and finish both persist done, strip `?tour`, and navigate back to the origin. A tour that was skipped is re-openable from "Take the tour".
+- **Keyboard:** Esc skip, ArrowRight/Enter next (Enter on the last step presses its primary button), ArrowLeft back. Ignored when a modifier is held, when typing in a field, and Enter on a focused button or link goes to that element. Tab is trapped in the card; focus is saved on open and restored on close; focus moves to the card on every step.
+- A tour or setup URL param only opens the UI; it never triggers a mutation.
+
 ## Structured data in UI
 
 - **A typed field registry** (one constant) is the single source for the API validator, the MCP/agent output schema, the filter builder and the rail editor. Every field is optional with a type (enum, string[], number, bool, object[], country code). Adding a field is a registry edit, not a migration.
@@ -207,11 +281,12 @@ Rows have fixed heights (`grid-template-rows` with no `auto` rows). A missing pa
 
 1. **Inventory.** List every page, tab, card, filter and action of the old app, plus data hooks and the routes that must keep working. Note dead pages: delete them, do not port them.
 2. **Map** each item to a section or sidebar view: tabs become sidebar children; separate concerns become separate sections (not tabs of one page); duplicated headline numbers are shown once.
-3. **List what to delete:** tab strips, filter-chip rows, back links and arrows, in-page H1s, duplicate titles, drawers, peeks, inline expansion, checkbox columns with no bulk action, tables of events, nested boxes, per-page containers.
-4. **Build the shell and kit first:** tokens, shell, registry and hotkeys, nav tree, DataTable, ViewBar, RecordPage, Thread, EventFeed, Panel, StatTile, charts. Pages are then thin.
-5. **Port section by section.** Reuse data hooks; wrap unconverted pages in the shell (generic keys only) so nothing blocks the rollout. Restyle mutation UIs without changing their logic or copy. Add redirects and a test table for every old URL.
-6. **Click through in a real browser** at 1280 and 1440px wide, light and dark, compact and comfortable, with the sidebar in full and rail modes. Use only the keyboard for one full pass. Check browser Back from a record lands on the exact row.
-7. **Run the review checklist** below and fix before shipping.
+3. **Carry over the lifecycle surfaces:** onboarding or setup flow, tour (re-anchor every `data-tour` id to the new nav and re-run the anchor test), the sidebar footer (docs, support, version, auto-refresh), and the tenant and child switchers with their URL scope. Dropping these in a redesign is the usual loss.
+4. **List what to delete:** tab strips, filter-chip rows, back links and arrows, in-page H1s, duplicate titles, drawers, peeks, inline expansion, checkbox columns with no bulk action, tables of events, nested boxes, per-page containers.
+5. **Build the shell and kit first:** tokens, shell, registry and hotkeys, nav tree, DataTable, ViewBar, RecordPage, Thread, EventFeed, Panel, StatTile, charts. Pages are then thin. Ship the version watch and stale-chunk recovery with the shell, not later.
+6. **Port section by section.** Reuse data hooks; wrap unconverted pages in the shell (generic keys only) so nothing blocks the rollout. Restyle mutation UIs without changing their logic or copy. Add redirects and a test table for every old URL.
+7. **Click through in a real browser** at 1280 and 1440px wide, light and dark, compact and comfortable, with the sidebar in full and rail modes. Use only the keyboard for one full pass. Check browser Back from a record lands on the exact row.
+8. **Run the review checklist** below and fix before shipping.
 
 ## Review checklist
 
@@ -244,6 +319,15 @@ Rows have fixed heights (`grid-template-rows` with no `auto` rows). A missing pa
 - [ ] Facts are typed registry fields; notes hold commentary only
 - [ ] Group membership is many-to-many; no status shown on the entity that belongs to the relation
 - [ ] Dark theme and both densities pass a contrast and layout check
+- [ ] One switcher per level at the top, each scoping everything below; scope is in the URL and persists
+- [ ] Switchers open by key, filter by typing, list recent and pinned first, and invalidate tenant-scoped queries on switch
+- [ ] Sidebar footer has Docs, Support, version label and the profile menu; Setup and Tour re-openable at any time
+- [ ] `/version.json` (no-store) plus a focus/interval watch; stale tab shows a non-blocking Refresh prompt and a red version label
+- [ ] A failed chunk load triggers one capped reload (never a loop) and an error screen with Reload past the cap
+- [ ] Old hashed assets are retained for 24h across deploys
+- [ ] First-run setup opens once; the tour never starts the setup gate and vice versa; skip is always available
+- [ ] Tour steps are data, anchors and routes are test-checked against the real nav, step is in `?tour=` and resumes on reload and Back
+- [ ] Tour and setup are keyboard complete (Esc, arrows, Enter, Tab trap, focus restore) and persist done locally then on the server
 
 ## Anti-patterns
 
