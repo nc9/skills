@@ -5,6 +5,8 @@ description: Principles for building great web app interfaces — performance, l
 
 Taste is trained, not innate — develop it by studying interfaces that feel right and reverse-engineering why. Most of the details users will love are details they'll never consciously notice; the aggregate of invisible correctness is what makes software feel great. Beauty is leverage — good defaults and good motion are real differentiators.
 
+For app shells, dashboards and keyboard-first data apps, see the app-ui skill.
+
 Apply these principles when generating or modifying UI code. When reviewing existing UI, flag violations with the section name (e.g. "Fundamentals › Feedback: button left in ambiguous state after click"). For motion/animation/transition issues, use a markdown table with `| Before | After | Why |` columns — one row per issue. Not every rule applies to every component — use judgement, but default to following the principle unless there's a clear reason not to.
 
 Example motion-review table:

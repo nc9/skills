@@ -124,6 +124,7 @@ npx skills add https://github.com/nc9/skills/tree/main/generate-image
 | [review](./review/) | Structured code review via OpenAI Codex MCP — 0-5 score, prioritized issues with file:line citations, verification pass; context from GitHub/Linear/Sentry + plans + conversation | [OpenAI](https://platform.openai.com/) (Codex MCP or CLI) |
 | [geist-design](./geist-design/) | Modern dev-tool design aesthetic — the Vercel / Linear / Stripe / Resend visual language for premium UI | None (local) |
 | [web-ui](./web-ui/) | Principles for building great web app interfaces | None (local) |
+| [app-ui](./app-ui/) | Keyboard-first Linear/Attio-style app shells, records, threads, dashboards and cards | None (local) |
 | [agent-browser](./agent-browser/) | Browser control via the agent-browser CLI — attach to an existing Chrome over CDP | None (local) |
 
 ## Configuration
