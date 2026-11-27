@@ -125,6 +125,7 @@ npx skills add https://github.com/nc9/skills/tree/main/generate-image
 | [geist-design](./geist-design/) | Modern dev-tool design aesthetic — the Vercel / Linear / Stripe / Resend visual language for premium UI | None (local) |
 | [web-ui](./web-ui/) | Principles for building great web app interfaces | None (local) |
 | [app-ui](./app-ui/) | Keyboard-first Linear/Attio-style app shells, records, threads, dashboards and cards | None (local) |
+| [ci-economy](./ci-economy/) | Fast, diff-scoped CI and merge-queue pipelines with step budgets, test pruning and nightly lanes | None (local) |
 | [agent-browser](./agent-browser/) | Browser control via the agent-browser CLI — attach to an existing Chrome over CDP | None (local) |
 
 ## Configuration
